@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Param,
   Body,
@@ -21,6 +22,11 @@ export class DocumentController {
     return this.documentService.findAll();
   }
 
+  @Get('archived')
+  findArchived() {
+    return this.documentService.findArchived();
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     const doc = await this.documentService.findById(id);
@@ -31,6 +37,16 @@ export class DocumentController {
   @Post()
   create(@Body('name') name: string) {
     return this.documentService.create(name || 'Untitled');
+  }
+
+  @Patch(':id/archive')
+  archive(@Param('id') id: string) {
+    return this.documentService.archive(id);
+  }
+
+  @Patch(':id/unarchive')
+  unarchive(@Param('id') id: string) {
+    return this.documentService.unarchive(id);
   }
 
   @Delete(':id')

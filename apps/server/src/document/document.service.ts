@@ -7,6 +7,15 @@ export class DocumentService {
 
   async findAll() {
     return this.prisma.document.findMany({
+      where: { archived: false },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true, name: true, createdAt: true, updatedAt: true },
+    });
+  }
+
+  async findArchived() {
+    return this.prisma.document.findMany({
+      where: { archived: true },
       orderBy: { updatedAt: 'desc' },
       select: { id: true, name: true, createdAt: true, updatedAt: true },
     });
@@ -18,6 +27,14 @@ export class DocumentService {
 
   async create(name: string) {
     return this.prisma.document.create({ data: { name } });
+  }
+
+  async archive(id: string) {
+    return this.prisma.document.update({ where: { id }, data: { archived: true } });
+  }
+
+  async unarchive(id: string) {
+    return this.prisma.document.update({ where: { id }, data: { archived: false } });
   }
 
   async delete(id: string) {

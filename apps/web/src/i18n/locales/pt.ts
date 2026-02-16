@@ -35,6 +35,14 @@ export default {
   'app.create': 'Criar',
   'app.documents': 'Documentos',
   'app.back': 'Voltar',
+  'app.delete': 'Excluir',
+  'app.archive': 'Arquivar',
+  'app.unarchive': 'Desarquivar',
+  'app.confirmDelete': 'Tem certeza?',
+  'app.cancel': 'Cancelar',
+  'app.archived': 'Arquivados',
+  'app.showArchived': 'Mostrar arquivados',
+  'app.hideArchived': 'Ocultar arquivados',
 
   // Auth
   'auth.authenticating': 'Autenticando...',

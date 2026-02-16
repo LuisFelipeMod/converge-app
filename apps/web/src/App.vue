@@ -13,8 +13,11 @@ const store = useCollaborationStore();
 const documentId = ref<string | null>(null);
 const documentName = ref('');
 const documents = ref<Array<{ id: string; name: string }>>([]);
+const archivedDocuments = ref<Array<{ id: string; name: string }>>([]);
 const loading = ref(false);
 const initializing = ref(true);
+const showArchived = ref(false);
+const confirmingDeleteId = ref<string | null>(null);
 
 const isAuthCallback = computed(() =>
   window.location.pathname === '/auth/callback' ||
@@ -77,6 +80,69 @@ function openDocument(id: string) {
 function goBack() {
   documentId.value = null;
   fetchDocuments();
+}
+
+async function deleteDocument(id: string) {
+  try {
+    await fetch(`/api/documents/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${store.token}` },
+    });
+    documents.value = documents.value.filter((d) => d.id !== id);
+    archivedDocuments.value = archivedDocuments.value.filter((d) => d.id !== id);
+  } catch {
+    // ignore
+  }
+  confirmingDeleteId.value = null;
+}
+
+async function archiveDocument(id: string) {
+  try {
+    await fetch(`/api/documents/${id}/archive`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${store.token}` },
+    });
+    const doc = documents.value.find((d) => d.id === id);
+    documents.value = documents.value.filter((d) => d.id !== id);
+    if (doc) archivedDocuments.value.unshift(doc);
+  } catch {
+    // ignore
+  }
+}
+
+async function unarchiveDocument(id: string) {
+  try {
+    await fetch(`/api/documents/${id}/unarchive`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${store.token}` },
+    });
+    const doc = archivedDocuments.value.find((d) => d.id === id);
+    archivedDocuments.value = archivedDocuments.value.filter((d) => d.id !== id);
+    if (doc) documents.value.unshift(doc);
+  } catch {
+    // ignore
+  }
+}
+
+async function fetchArchivedDocuments() {
+  if (!store.token) return;
+  try {
+    const res = await fetch('/api/documents/archived', {
+      headers: { Authorization: `Bearer ${store.token}` },
+    });
+    if (res.ok) {
+      archivedDocuments.value = await res.json();
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function toggleArchived() {
+  showArchived.value = !showArchived.value;
+  if (showArchived.value && archivedDocuments.value.length === 0) {
+    fetchArchivedDocuments();
+  }
 }
 
 function onAuthenticated() {
@@ -237,14 +303,94 @@ onMounted(async () => {
 
       <div v-if="documents.length > 0" class="space-y-2">
         <h2 class="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">{{ t('app.documents') }}</h2>
-        <button
+        <div
           v-for="doc in documents"
           :key="doc.id"
-          class="w-full text-left bg-gray-800 hover:bg-gray-750 border border-gray-700 rounded-lg px-4 py-3 transition-colors hover:border-gray-600"
-          @click="openDocument(doc.id)"
+          class="flex items-center bg-gray-800 border border-gray-700 rounded-lg transition-colors hover:border-gray-600"
         >
-          {{ doc.name }}
+          <button
+            class="flex-1 text-left px-4 py-3 hover:text-blue-400 transition-colors truncate"
+            @click="openDocument(doc.id)"
+          >{{ doc.name }}</button>
+          <div class="flex items-center gap-1 pr-2">
+            <template v-if="confirmingDeleteId === doc.id">
+              <span class="text-xs text-gray-400">{{ t('app.confirmDelete') }}</span>
+              <button
+                class="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded transition-colors"
+                @click.stop="deleteDocument(doc.id)"
+              >{{ t('app.delete') }}</button>
+              <button
+                class="text-xs text-gray-400 hover:text-gray-300 px-2 py-1 rounded transition-colors"
+                @click.stop="confirmingDeleteId = null"
+              >{{ t('app.cancel') }}</button>
+            </template>
+            <template v-else>
+              <button
+                class="text-gray-500 hover:text-yellow-400 p-1.5 rounded transition-colors"
+                :title="t('app.archive')"
+                @click.stop="archiveDocument(doc.id)"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+              </button>
+              <button
+                class="text-gray-500 hover:text-red-400 p-1.5 rounded transition-colors"
+                :title="t('app.delete')"
+                @click.stop="confirmingDeleteId = doc.id"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              </button>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- Archived documents -->
+      <div class="mt-6">
+        <button
+          class="text-sm text-gray-500 hover:text-gray-300 transition-colors"
+          @click="toggleArchived"
+        >
+          {{ showArchived ? t('app.hideArchived') : t('app.showArchived') }}
         </button>
+        <div v-if="showArchived && archivedDocuments.length > 0" class="space-y-2 mt-3">
+          <h2 class="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">{{ t('app.archived') }}</h2>
+          <div
+            v-for="doc in archivedDocuments"
+            :key="doc.id"
+            class="flex items-center bg-gray-800/50 border border-gray-700/50 rounded-lg transition-colors"
+          >
+            <span class="flex-1 text-left px-4 py-3 text-gray-500 truncate">{{ doc.name }}</span>
+            <div class="flex items-center gap-1 pr-2">
+              <template v-if="confirmingDeleteId === doc.id">
+                <span class="text-xs text-gray-400">{{ t('app.confirmDelete') }}</span>
+                <button
+                  class="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded transition-colors"
+                  @click.stop="deleteDocument(doc.id)"
+                >{{ t('app.delete') }}</button>
+                <button
+                  class="text-xs text-gray-400 hover:text-gray-300 px-2 py-1 rounded transition-colors"
+                  @click.stop="confirmingDeleteId = null"
+                >{{ t('app.cancel') }}</button>
+              </template>
+              <template v-else>
+                <button
+                  class="text-gray-500 hover:text-green-400 p-1.5 rounded transition-colors"
+                  :title="t('app.unarchive')"
+                  @click.stop="unarchiveDocument(doc.id)"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                </button>
+                <button
+                  class="text-gray-500 hover:text-red-400 p-1.5 rounded transition-colors"
+                  :title="t('app.delete')"
+                  @click.stop="confirmingDeleteId = doc.id"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
+              </template>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
