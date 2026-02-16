@@ -7,6 +7,7 @@ import { useCanvas } from '@/composables/useCanvas';
 import { useAwareness } from '@/composables/useAwareness';
 import { useExport } from '@/composables/useExport';
 import { useViewport } from '@/composables/useViewport';
+import { useSmoothCursor } from '@/composables/useSmoothCursor';
 import { useI18n } from 'vue-i18n';
 import { useCollaborationStore } from '@/stores/collaboration';
 import CursorOverlay from './CursorOverlay.vue';
@@ -50,6 +51,22 @@ const { updateCursor, clearCursor, onlineUsers, cursors } = useAwareness(
 );
 
 const { exportPng } = useExport(svgRef);
+
+const { smoothCursors } = useSmoothCursor(cursors);
+
+// Export button state management
+const exportState = ref<'idle' | 'loading' | 'success'>('idle');
+async function handleExportPng() {
+  if (exportState.value !== 'idle') return;
+  exportState.value = 'loading';
+  try {
+    await exportPng();
+    exportState.value = 'success';
+    setTimeout(() => { exportState.value = 'idle'; }, 1500);
+  } catch {
+    exportState.value = 'idle';
+  }
+}
 
 const {
   viewBox,
@@ -257,8 +274,9 @@ const selBoxRect = computed(() => {
   >
     <Toolbar
       :active-tool="activeTool"
+      :export-state="exportState"
       @select-tool="onSelectTool"
-      @export-png="exportPng"
+      @export-png="handleExportPng"
       @zoom-in="zoomIn"
       @zoom-out="zoomOut"
       @reset-view="resetView"
@@ -599,8 +617,8 @@ const selBoxRect = computed(() => {
         />
       </foreignObject>
 
-      <!-- Remote cursors -->
-      <CursorOverlay :cursors="cursors" />
+      <!-- Remote cursors (spring-interpolated) -->
+      <CursorOverlay :cursors="smoothCursors" />
     </svg>
   </div>
 </template>

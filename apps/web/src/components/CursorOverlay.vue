@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { UserPresence } from '@realtime-collab/shared';
+import type { SmoothCursor } from '@/composables/useSmoothCursor';
 
 defineProps<{
-  cursors: UserPresence[];
+  cursors: SmoothCursor[];
 }>();
 </script>
 
@@ -11,7 +11,8 @@ defineProps<{
     <g
       v-for="user in cursors"
       :key="user.userId"
-      :transform="`translate(${user.cursor!.x}, ${user.cursor!.y})`"
+      :transform="`translate(${user.x}, ${user.y})`"
+      :opacity="user.opacity"
     >
       <!-- Cursor arrow -->
       <path
@@ -19,6 +20,7 @@ defineProps<{
         :fill="user.color"
         stroke="white"
         stroke-width="0.5"
+        filter="drop-shadow(0 1px 2px rgba(0,0,0,0.4))"
       />
       <!-- Name label -->
       <rect
@@ -26,15 +28,17 @@ defineProps<{
         y="10"
         :width="user.name.length * 7 + 8"
         height="18"
-        rx="3"
+        rx="4"
         :fill="user.color"
+        filter="drop-shadow(0 1px 3px rgba(0,0,0,0.3))"
       />
       <text
         x="16"
         y="23"
         fill="white"
         font-size="11"
-        font-family="sans-serif"
+        font-family="system-ui, sans-serif"
+        font-weight="500"
       >
         {{ user.name }}
       </text>

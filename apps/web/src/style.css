@@ -2,7 +2,147 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --ease-expo: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 350ms;
+}
+
 body {
   margin: 0;
   overflow: hidden;
+}
+
+/* ─── Glassmorphism ─── */
+.glass {
+  background: rgba(31, 41, 55, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ─── Button press feedback ─── */
+.btn-press {
+  transition: transform var(--duration-fast) var(--ease-expo),
+              background-color var(--duration-fast) var(--ease-expo);
+}
+.btn-press:active {
+  transform: scale(0.95);
+}
+
+/* ─── Keyframes ─── */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-down-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scaleY(0.95);
+    transform-origin: top;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+    transform-origin: top;
+  }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes spin-subtle {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes check-draw {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ─── Animation utilities ─── */
+.animate-fade-in {
+  animation: fade-in var(--duration-normal) var(--ease-expo) both;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up var(--duration-normal) var(--ease-expo) both;
+}
+
+.animate-slide-down {
+  animation: slide-down var(--duration-slow) var(--ease-expo) both;
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+.animate-spin-subtle {
+  animation: spin-subtle 0.8s linear infinite;
+}
+
+.animate-check-draw {
+  stroke-dasharray: 24;
+  animation: check-draw 0.3s var(--ease-expo) both;
+}
+
+/* ─── Vue TransitionGroup: stagger list ─── */
+.list-enter-active {
+  animation: fade-in-up var(--duration-normal) var(--ease-expo) both;
+}
+.list-leave-active {
+  animation: fade-in-up var(--duration-fast) var(--ease-expo) reverse both;
+}
+.list-move {
+  transition: transform var(--duration-normal) var(--ease-expo);
+}
+
+/* ─── Vue Transition: fade ─── */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--duration-fast) var(--ease-expo);
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* ─── Vue Transition: slide-collapse ─── */
+.slide-enter-active {
+  animation: slide-down-expand var(--duration-normal) var(--ease-expo) both;
+}
+.slide-leave-active {
+  animation: slide-down-expand var(--duration-fast) var(--ease-expo) reverse both;
 }

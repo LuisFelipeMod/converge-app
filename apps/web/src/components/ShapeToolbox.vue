@@ -53,7 +53,7 @@ function getToolboxY(): number {
   >
     <div
       xmlns="http://www.w3.org/1999/xhtml"
-      class="flex items-center gap-1 bg-gray-800 rounded-lg p-1 shadow-lg border border-gray-700"
+      class="flex items-center gap-1 glass rounded-xl p-1 shadow-2xl animate-fade-in-up"
       style="width: fit-content; margin: 0 auto;"
       @mousedown.stop
     >
