@@ -5,6 +5,7 @@ import { THROTTLE_MS, PRESENCE_COLORS } from '@realtime-collab/shared';
 
 const HANDLE_SIZE = 8;
 const LINE_HIT_TOLERANCE = 8;
+const DUPLICATE_GAP = 80;
 
 export function useCanvas(
   shapes: { value: Map<string, Shape> },
@@ -500,6 +501,71 @@ export function useCanvas(
     selectedShapeIds.value = new Set();
   }
 
+  function duplicateWithArrow(direction: 'up' | 'down' | 'left' | 'right') {
+    const shape = selectedShape.value;
+    if (!shape || shape.type === 'line' || shape.type === 'arrow') return;
+
+    // Calculate new shape position
+    let newX = shape.x;
+    let newY = shape.y;
+    if (direction === 'right') newX = shape.x + shape.width + DUPLICATE_GAP;
+    else if (direction === 'left') newX = shape.x - shape.width - DUPLICATE_GAP;
+    else if (direction === 'down') newY = shape.y + shape.height + DUPLICATE_GAP;
+    else if (direction === 'up') newY = shape.y - shape.height - DUPLICATE_GAP;
+
+    // Calculate arrow start/end points (edge centers)
+    let ax1 = 0, ay1 = 0, ax2 = 0, ay2 = 0;
+    if (direction === 'right') {
+      ax1 = shape.x + shape.width; ay1 = shape.y + shape.height / 2;
+      ax2 = newX; ay2 = newY + shape.height / 2;
+    } else if (direction === 'left') {
+      ax1 = shape.x; ay1 = shape.y + shape.height / 2;
+      ax2 = newX + shape.width; ay2 = newY + shape.height / 2;
+    } else if (direction === 'down') {
+      ax1 = shape.x + shape.width / 2; ay1 = shape.y + shape.height;
+      ax2 = newX + shape.width / 2; ay2 = newY;
+    } else if (direction === 'up') {
+      ax1 = shape.x + shape.width / 2; ay1 = shape.y;
+      ax2 = newX + shape.width / 2; ay2 = newY + shape.height;
+    }
+
+    // Create arrow
+    const arrowShape: ArrowShape = {
+      id: generateId(),
+      type: 'arrow',
+      x: ax1, y: ay1,
+      x2: ax2, y2: ay2,
+      width: Math.abs(ax2 - ax1),
+      height: Math.abs(ay2 - ay1),
+      fill: 'transparent',
+      stroke: shape.stroke,
+      strokeWidth: 2,
+      curved: false,
+      dashed: false,
+      createdBy: userId,
+      createdByName: userName,
+      createdAt: Date.now(),
+    };
+
+    // Clone shape
+    const newShape: Shape = {
+      ...shape,
+      id: generateId(),
+      x: newX,
+      y: newY,
+      text: '',
+      createdAt: Date.now(),
+    };
+
+    callbacks.addShape(arrowShape);
+    callbacks.addShape(newShape);
+
+    // Select new shape and enter text editing mode
+    selectedShapeIds.value = new Set([newShape.id]);
+    editingShapeId.value = newShape.id;
+    editingText.value = '';
+  }
+
   function handleKeyDown(e: KeyboardEvent) {
     if (editingShapeId.value) return;
 
@@ -510,6 +576,23 @@ export function useCanvas(
 
     if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
       callbacks.undo();
+      e.preventDefault();
+    }
+
+    if ((e.key === 'b' || e.key === 'i') && (e.ctrlKey || e.metaKey) && selectedShapeIds.value.size > 0) {
+      const prop = e.key === 'b' ? 'bold' : 'italic';
+      for (const id of selectedShapeIds.value) {
+        const s = shapes.value.get(id);
+        if (s) callbacks.updateShape(id, { [prop]: !s[prop] } as any);
+      }
+      e.preventDefault();
+    }
+
+    if (e.ctrlKey && e.shiftKey && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      const dirMap: Record<string, 'up' | 'down' | 'left' | 'right'> = {
+        ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+      };
+      duplicateWithArrow(dirMap[e.key]);
       e.preventDefault();
     }
   }
