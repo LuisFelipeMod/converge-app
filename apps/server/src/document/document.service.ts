@@ -7,7 +7,7 @@ export class DocumentService {
 
   async findAll() {
     return this.prisma.document.findMany({
-      where: { archived: false },
+      where: { archived: { not: true } },
       orderBy: { updatedAt: 'desc' },
       select: { id: true, name: true, createdAt: true, updatedAt: true },
     });

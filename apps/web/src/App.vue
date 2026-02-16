@@ -326,6 +326,7 @@ onMounted(async () => {
             </template>
             <template v-else>
               <button
+                v-if="!authStore.isGuest"
                 class="text-gray-500 hover:text-yellow-400 p-1.5 rounded transition-colors"
                 :title="t('app.archive')"
                 @click.stop="archiveDocument(doc.id)"
@@ -344,8 +345,8 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Archived documents -->
-      <div class="mt-6">
+      <!-- Archived documents (hidden for guests) -->
+      <div v-if="!authStore.isGuest" class="mt-6">
         <button
           class="text-sm text-gray-500 hover:text-gray-300 transition-colors"
           @click="toggleArchived"
