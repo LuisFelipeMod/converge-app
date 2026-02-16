@@ -579,6 +579,11 @@ export function useCanvas(
       e.preventDefault();
     }
 
+    if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+      selectedShapeIds.value = new Set(shapes.value.keys());
+      e.preventDefault();
+    }
+
     if ((e.key === 'b' || e.key === 'i') && (e.ctrlKey || e.metaKey) && selectedShapeIds.value.size > 0) {
       const prop = e.key === 'b' ? 'bold' : 'italic';
       for (const id of selectedShapeIds.value) {
