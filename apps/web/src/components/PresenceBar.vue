@@ -14,7 +14,7 @@ defineProps<{
 </script>
 
 <template>
-  <div class="absolute top-4 right-4 flex items-center gap-2 z-10 glass rounded-xl px-3 py-2 animate-slide-down">
+  <div class="absolute top-16 right-4 flex items-center gap-2 z-10 glass rounded-xl px-3 py-2 animate-slide-down">
     <div
       :class="[
         'w-2 h-2 rounded-full transition-colors duration-300',
