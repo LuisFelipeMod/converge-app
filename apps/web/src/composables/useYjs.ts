@@ -4,13 +4,19 @@ import { io, Socket } from 'socket.io-client';
 import { WsEvent } from '@realtime-collab/shared';
 import type { Shape, UserPresence } from '@realtime-collab/shared';
 
-export function useYjs(documentId: string, user: { userId: string; name: string; token: string }) {
+export function useYjs(documentId: string, user: { userId: string; name: string; avatar?: string; token: string }) {
   const doc = new Y.Doc();
   const shapes = doc.getMap<Shape>('shapes');
   const connected = ref(false);
   const shapesSnapshot = ref<Map<string, Shape>>(new Map());
   const peers = ref<Map<string, UserPresence>>(new Map());
   const socket = shallowRef<Socket | null>(null);
+
+  const undoManager = new Y.UndoManager(shapes);
+
+  function undo() {
+    undoManager.undo();
+  }
 
   function syncShapesSnapshot() {
     const map = new Map<string, Shape>();
@@ -132,6 +138,7 @@ export function useYjs(documentId: string, user: { userId: string; name: string;
     addShape,
     updateShape,
     deleteShape,
+    undo,
     broadcastPresence,
     disconnect,
   };

@@ -6,6 +6,7 @@ export function useAwareness(
   peers: { value: Map<string, UserPresence> },
   broadcastPresence: (presence: Partial<UserPresence>) => void,
   userColor: string,
+  userAvatar?: string,
 ) {
   let lastBroadcast = 0;
 
@@ -17,6 +18,7 @@ export function useAwareness(
     broadcastPresence({
       cursor: { x, y },
       color: userColor,
+      ...(userAvatar ? { avatar: userAvatar } : {}),
     });
   }
 

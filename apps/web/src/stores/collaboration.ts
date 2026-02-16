@@ -2,18 +2,20 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { PRESENCE_COLORS } from '@realtime-collab/shared';
 import type { Tool } from '@/types';
+import { useAuthStore } from './auth';
 
 export const useCollaborationStore = defineStore('collaboration', () => {
+  const authStore = useAuthStore();
+
   const documentId = ref<string | null>(null);
-  const userId = ref(generateUserId());
-  const userName = ref(`User-${userId.value.slice(0, 4)}`);
-  const userColor = ref(pickColor(userId.value));
   const activeTool = ref<Tool>('select');
   const isConnected = ref(false);
 
-  const token = computed(() => {
-    return generateSimpleToken(userId.value, userName.value);
-  });
+  const userId = computed(() => authStore.user?.userId || '');
+  const userName = computed(() => authStore.user?.name || 'Anonymous');
+  const userAvatar = computed(() => authStore.user?.avatar || null);
+  const userColor = computed(() => pickColor(userId.value));
+  const token = computed(() => authStore.token);
 
   function setDocument(id: string) {
     documentId.value = id;
@@ -31,6 +33,7 @@ export const useCollaborationStore = defineStore('collaboration', () => {
     documentId,
     userId,
     userName,
+    userAvatar,
     userColor,
     activeTool,
     isConnected,
@@ -41,18 +44,7 @@ export const useCollaborationStore = defineStore('collaboration', () => {
   };
 });
 
-function generateUserId(): string {
-  return Math.random().toString(36).slice(2, 10);
-}
-
 function pickColor(id: string): string {
   const hash = id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return PRESENCE_COLORS[hash % PRESENCE_COLORS.length];
-}
-
-function generateSimpleToken(userId: string, name: string): string {
-  // In production, this would come from a real auth flow.
-  // For MVP/demo, we create a simple payload (server will validate with shared secret)
-  const payload = btoa(JSON.stringify({ userId, name }));
-  return `${payload}.dev`;
 }
