@@ -1,9 +1,9 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
-import { AuthGuard } from './auth.guard';
+import { AuthService } from './auth.service';
 
 @Injectable()
 export class WsAuthGuard implements CanActivate {
-  constructor(private authGuard: AuthGuard) {}
+  constructor(private authService: AuthService) {}
 
   canActivate(context: ExecutionContext): boolean {
     const client = context.switchToWs().getClient();
@@ -14,8 +14,13 @@ export class WsAuthGuard implements CanActivate {
     if (!token) return false;
 
     try {
-      const payload = this.authGuard.verifySimpleToken(token as string);
-      client.data.user = payload;
+      const payload = this.authService.verifyToken(token as string);
+      client.data.user = {
+        userId: payload.sub,
+        email: payload.email,
+        name: payload.name,
+        avatar: payload.avatar,
+      };
       return true;
     } catch {
       return false;

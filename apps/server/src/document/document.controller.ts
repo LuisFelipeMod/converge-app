@@ -9,10 +9,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DocumentService } from './document.service';
-import { AuthGuard } from '../auth/auth.guard';
+import { JwtAuthGuard } from '../auth/auth.guard';
 
 @Controller('documents')
-@UseGuards(AuthGuard)
+@UseGuards(JwtAuthGuard)
 export class DocumentController {
   constructor(private documentService: DocumentService) {}
 

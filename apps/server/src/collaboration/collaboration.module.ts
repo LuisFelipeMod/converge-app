@@ -4,7 +4,7 @@ import { CollaborationService } from './collaboration.service';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule.forRoot()],
   providers: [CollaborationGateway, CollaborationService],
   exports: [CollaborationService],
 })
