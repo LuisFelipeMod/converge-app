@@ -19,12 +19,15 @@ const emit = defineEmits<{
 }>();
 
 const tools = computed(() => [
-  { id: 'select' as Tool, label: t('toolbar.select'), icon: '↖' },
-  { id: 'rectangle' as Tool, label: t('toolbar.rectangle'), icon: '▭' },
-  { id: 'circle' as Tool, label: t('toolbar.circle'), icon: '○' },
-  { id: 'line' as Tool, label: t('toolbar.line'), icon: '╱' },
-  { id: 'arrow' as Tool, label: t('toolbar.arrow'), icon: '→' },
-  { id: 'text' as Tool, label: t('toolbar.text'), icon: 'T' },
+  { id: 'select' as Tool, label: t('toolbar.select'), icon: '↖', shortcut: 'V' },
+  { id: 'hand' as Tool, label: t('toolbar.hand'), icon: '✋', shortcut: 'H' },
+  { id: 'rectangle' as Tool, label: t('toolbar.rectangle'), icon: '▭', shortcut: 'R' },
+  { id: 'circle' as Tool, label: t('toolbar.circle'), icon: '○', shortcut: 'O' },
+  { id: 'line' as Tool, label: t('toolbar.line'), icon: '╱', shortcut: 'L' },
+  { id: 'arrow' as Tool, label: t('toolbar.arrow'), icon: '→', shortcut: 'A' },
+  { id: 'freedraw' as Tool, label: t('toolbar.freedraw'), icon: '✏', shortcut: 'P' },
+  { id: 'text' as Tool, label: t('toolbar.text'), icon: 'T', shortcut: 'T' },
+  { id: 'laser' as Tool, label: t('toolbar.laser'), icon: '◉', shortcut: '9' },
 ]);
 
 const currentExportState = computed(() => props.exportState ?? 'idle');
@@ -41,7 +44,7 @@ const currentExportState = computed(() => props.exportState ?? 'idle');
           ? 'bg-blue-600/90 text-white shadow-md shadow-blue-500/20'
           : 'text-gray-300 hover:bg-white/5 hover:text-white',
       ]"
-      :title="tool.label"
+      :title="`${tool.label} (${tool.shortcut})`"
       @click="emit('select-tool', tool.id)"
     >
       {{ tool.icon }} {{ tool.label }}

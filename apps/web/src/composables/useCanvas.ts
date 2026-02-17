@@ -1,11 +1,12 @@
 import { ref, computed } from 'vue';
-import type { Shape, TextShape, LineShape, ArrowShape } from '@realtime-collab/shared';
-import type { Tool, DragState, DrawState, ResizeState, HandleInfo, SelectionBoxState } from '@/types';
+import type { Shape, TextShape, LineShape, ArrowShape, FreehandShape } from '@realtime-collab/shared';
+import type { Tool, DragState, DrawState, ResizeState, HandleInfo, SelectionBoxState, LaserStroke } from '@/types';
 import { THROTTLE_MS, PRESENCE_COLORS } from '@realtime-collab/shared';
 
 const HANDLE_SIZE = 8;
 const LINE_HIT_TOLERANCE = 8;
 const DUPLICATE_GAP = 80;
+const SNAP_DISTANCE = 20;
 
 export function useCanvas(
   shapes: { value: Map<string, Shape> },
@@ -54,6 +55,50 @@ export function useCanvas(
 
   const previewShape = ref<Shape | null>(null);
 
+  // Snap-to-shape state
+  const snapTarget = ref<{ x: number; y: number; shapeId: string } | null>(null);
+
+  // Freehand drawing state
+  const freehandPoints = ref<number[]>([]);
+
+  // Laser pointer state
+  const laserStrokes = ref<LaserStroke[]>([]);
+  const laserCurrentPoints = ref<number[]>([]);
+  const laserIsDrawing = ref(false);
+  let laserAnimFrame: number | null = null;
+
+  function startLaserAnimation() {
+    if (laserAnimFrame !== null) return;
+    const LASER_FADE_MS = 2000;
+    function tick() {
+      const now = Date.now();
+      const strokes = laserStrokes.value;
+      let changed = false;
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        const elapsed = now - strokes[i].createdAt;
+        if (elapsed >= LASER_FADE_MS) {
+          strokes.splice(i, 1);
+          changed = true;
+        } else {
+          const newOpacity = 1 - elapsed / LASER_FADE_MS;
+          if (strokes[i].opacity !== newOpacity) {
+            strokes[i].opacity = newOpacity;
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        laserStrokes.value = [...strokes];
+      }
+      if (strokes.length > 0 || laserIsDrawing.value) {
+        laserAnimFrame = requestAnimationFrame(tick);
+      } else {
+        laserAnimFrame = null;
+      }
+    }
+    laserAnimFrame = requestAnimationFrame(tick);
+  }
+
   const sortedShapes = computed(() =>
     Array.from(shapes.value.values()).sort((a, b) => a.createdAt - b.createdAt),
   );
@@ -72,7 +117,19 @@ export function useCanvas(
 
   const resizeHandles = computed<HandleInfo[]>(() => {
     const s = selectedShape.value;
-    if (!s || s.type === 'line' || s.type === 'arrow') return [];
+    if (!s) return [];
+    if (s.type === 'line' || s.type === 'arrow') {
+      const ls = s as LineShape | ArrowShape;
+      // Calculate midpoint handle position (respects curve offset)
+      const mx = (ls.x + ls.x2) / 2 + (ls.curveOffsetX || 0);
+      const my = (ls.y + ls.y2) / 2 + (ls.curveOffsetY || 0);
+      return [
+        { id: 'start', x: ls.x, y: ls.y, cursor: 'crosshair' },
+        { id: 'mid', x: mx, y: my, cursor: 'move' },
+        { id: 'end', x: ls.x2, y: ls.y2, cursor: 'crosshair' },
+      ];
+    }
+    if (s.type === 'freedraw') return [];
     const hs = HANDLE_SIZE / 2;
     return [
       { id: 'nw', x: s.x - hs, y: s.y - hs, cursor: 'nwse-resize' },
@@ -127,6 +184,13 @@ export function useCanvas(
         if (distToSegment(x, y, ls.x, ls.y, ls.x2, ls.y2) < LINE_HIT_TOLERANCE) {
           return s;
         }
+      } else if (s.type === 'freedraw') {
+        const fs = s as FreehandShape;
+        for (let j = 0; j < fs.points.length - 2; j += 2) {
+          if (distToSegment(x, y, fs.points[j], fs.points[j + 1], fs.points[j + 2], fs.points[j + 3]) < LINE_HIT_TOLERANCE) {
+            return s;
+          }
+        }
       } else {
         if (x >= s.x && x <= s.x + s.width && y >= s.y && y <= s.y + s.height) {
           return s;
@@ -137,9 +201,17 @@ export function useCanvas(
   }
 
   function findHandleAt(x: number, y: number): HandleInfo | null {
+    const ENDPOINT_RADIUS = 6;
     for (const h of resizeHandles.value) {
-      if (x >= h.x && x <= h.x + HANDLE_SIZE && y >= h.y && y <= h.y + HANDLE_SIZE) {
-        return h;
+      if (h.id === 'start' || h.id === 'end' || h.id === 'mid') {
+        // Circle-based hit test for endpoint/midpoint handles
+        if (Math.hypot(x - h.x, y - h.y) <= ENDPOINT_RADIUS) {
+          return h;
+        }
+      } else {
+        if (x >= h.x && x <= h.x + HANDLE_SIZE && y >= h.y && y <= h.y + HANDLE_SIZE) {
+          return h;
+        }
       }
     }
     return null;
@@ -155,6 +227,17 @@ export function useCanvas(
         y2: Math.max(ls.y, ls.y2),
       };
     }
+    if (s.type === 'freedraw') {
+      const fs = s as FreehandShape;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let i = 0; i < fs.points.length; i += 2) {
+        minX = Math.min(minX, fs.points[i]);
+        minY = Math.min(minY, fs.points[i + 1]);
+        maxX = Math.max(maxX, fs.points[i]);
+        maxY = Math.max(maxY, fs.points[i + 1]);
+      }
+      return { x1: minX, y1: minY, x2: maxX, y2: maxY };
+    }
     return { x1: s.x, y1: s.y, x2: s.x + s.width, y2: s.y + s.height };
   }
 
@@ -169,6 +252,50 @@ export function useCanvas(
     });
   }
 
+  // ─── Snap-to-shape detection ───
+
+  function getShapeSnapPoints(s: Shape): { x: number; y: number }[] {
+    if (s.type === 'line' || s.type === 'arrow' || s.type === 'freedraw') return [];
+    if (s.type === 'circle') {
+      // Cardinal points on the ellipse perimeter
+      const cx = s.x + s.width / 2;
+      const cy = s.y + s.height / 2;
+      const rx = s.width / 2;
+      const ry = s.height / 2;
+      return [
+        { x: cx, y: cy - ry },  // top
+        { x: cx + rx, y: cy },  // right
+        { x: cx, y: cy + ry },  // bottom
+        { x: cx - rx, y: cy },  // left
+      ];
+    }
+    // Rectangle, text: 4 edge centers
+    return [
+      { x: s.x + s.width / 2, y: s.y },              // top
+      { x: s.x + s.width, y: s.y + s.height / 2 },   // right
+      { x: s.x + s.width / 2, y: s.y + s.height },   // bottom
+      { x: s.x, y: s.y + s.height / 2 },              // left
+    ];
+  }
+
+  function findSnapPoint(x: number, y: number, excludeIds?: Set<string>): { x: number; y: number; shapeId: string } | null {
+    let best: { x: number; y: number; shapeId: string } | null = null;
+    let bestDist = SNAP_DISTANCE;
+
+    for (const s of shapes.value.values()) {
+      if (excludeIds && excludeIds.has(s.id)) continue;
+      const pts = getShapeSnapPoints(s);
+      for (const pt of pts) {
+        const d = Math.hypot(x - pt.x, y - pt.y);
+        if (d < bestDist) {
+          bestDist = d;
+          best = { x: pt.x, y: pt.y, shapeId: s.id };
+        }
+      }
+    }
+    return best;
+  }
+
   // ─── Mouse handlers ───
 
   function handleMouseDown(e: MouseEvent, svgEl: SVGSVGElement) {
@@ -179,17 +306,45 @@ export function useCanvas(
       const handle = findHandleAt(point.x, point.y);
       if (handle && selectedShape.value) {
         const s = selectedShape.value;
-        resize.value = {
-          isResizing: true,
-          shapeId: s.id,
-          handle: handle.id,
-          startX: point.x,
-          startY: point.y,
-          origX: s.x,
-          origY: s.y,
-          origW: s.width,
-          origH: s.height,
-        };
+        if (handle.id === 'start' || handle.id === 'end') {
+          const ls = s as LineShape | ArrowShape;
+          resize.value = {
+            isResizing: true,
+            shapeId: s.id,
+            handle: handle.id,
+            startX: point.x,
+            startY: point.y,
+            origX: ls.x,
+            origY: ls.y,
+            origW: ls.x2 as any,  // store x2 in origW for endpoint drag
+            origH: ls.y2 as any,  // store y2 in origH for endpoint drag
+          };
+        } else if (handle.id === 'mid') {
+          const ls = s as LineShape | ArrowShape;
+          resize.value = {
+            isResizing: true,
+            shapeId: s.id,
+            handle: 'mid',
+            startX: point.x,
+            startY: point.y,
+            origX: ls.curveOffsetX || 0,  // store original offset
+            origY: ls.curveOffsetY || 0,
+            origW: 0,
+            origH: 0,
+          };
+        } else {
+          resize.value = {
+            isResizing: true,
+            shapeId: s.id,
+            handle: handle.id,
+            startX: point.x,
+            startY: point.y,
+            origX: s.x,
+            origY: s.y,
+            origW: s.width,
+            origH: s.height,
+          };
+        }
         return;
       }
 
@@ -251,6 +406,13 @@ export function useCanvas(
       pendingTextShape.value = shape;
       editingShapeId.value = shape.id;
       editingText.value = '';
+    } else if (activeTool.value === 'freedraw') {
+      draw.value = { isDrawing: true, startX: point.x, startY: point.y };
+      freehandPoints.value = [point.x, point.y];
+    } else if (activeTool.value === 'laser') {
+      laserIsDrawing.value = true;
+      laserCurrentPoints.value = [point.x, point.y];
+      startLaserAnimation();
     } else {
       // rectangle, circle, line, arrow
       draw.value = {
@@ -281,8 +443,62 @@ export function useCanvas(
     // Resize
     if (resize.value.isResizing && resize.value.shapeId && resize.value.handle) {
       const r = resize.value;
+      const shapeId = r.shapeId!;
       const dx = point.x - r.startX;
       const dy = point.y - r.startY;
+
+      // Midpoint drag for curve control
+      if (r.handle === 'mid') {
+        const newOffsetX = r.origX + dx;
+        const newOffsetY = r.origY + dy;
+        // If offset is near zero, snap to straight
+        const dist = Math.hypot(newOffsetX, newOffsetY);
+        if (dist < 5) {
+          callbacks.updateShape(shapeId, {
+            curved: false,
+            curveOffsetX: 0,
+            curveOffsetY: 0,
+          } as any);
+        } else {
+          callbacks.updateShape(shapeId, {
+            curved: true,
+            curveOffsetX: newOffsetX,
+            curveOffsetY: newOffsetY,
+          } as any);
+        }
+        return;
+      }
+
+      // Endpoint drag for lines/arrows (with snap-to-shape)
+      if (r.handle === 'start') {
+        let newX = r.origX + dx;
+        let newY = r.origY + dy;
+        const snap = findSnapPoint(newX, newY, new Set([shapeId]));
+        if (snap) { newX = snap.x; newY = snap.y; }
+        snapTarget.value = snap;
+        callbacks.updateShape(shapeId, {
+          x: newX,
+          y: newY,
+          width: Math.abs(r.origW - newX),  // origW stores x2
+          height: Math.abs(r.origH - newY), // origH stores y2
+        } as any);
+        return;
+      }
+      if (r.handle === 'end') {
+        let newX2 = r.origW + dx;  // origW stores original x2
+        let newY2 = r.origH + dy;  // origH stores original y2
+        const snap = findSnapPoint(newX2, newY2, new Set([shapeId]));
+        if (snap) { newX2 = snap.x; newY2 = snap.y; }
+        snapTarget.value = snap;
+        callbacks.updateShape(shapeId, {
+          x2: newX2,
+          y2: newY2,
+          width: Math.abs(newX2 - r.origX),
+          height: Math.abs(newY2 - r.origY),
+        } as any);
+        return;
+      }
+
       let newX = r.origX, newY = r.origY, newW = r.origW, newH = r.origH;
 
       switch (r.handle) {
@@ -312,7 +528,7 @@ export function useCanvas(
           break;
       }
 
-      callbacks.updateShape(r.shapeId, { x: newX, y: newY, width: newW, height: newH });
+      callbacks.updateShape(shapeId, { x: newX, y: newY, width: newW, height: newH });
       return;
     }
 
@@ -332,6 +548,14 @@ export function useCanvas(
             x2: ls.x2 + dx,
             y2: ls.y2 + dy,
           } as any);
+        } else if (shape.type === 'freedraw') {
+          const fs = shape as FreehandShape;
+          const newPoints = [...fs.points];
+          for (let i = 0; i < newPoints.length; i += 2) {
+            newPoints[i] += dx;
+            newPoints[i + 1] += dy;
+          }
+          callbacks.updateShape(id, { x: fs.x + dx, y: fs.y + dy, points: newPoints } as any);
         } else {
           callbacks.updateShape(id, { x: shape.x + dx, y: shape.y + dy });
         }
@@ -340,20 +564,61 @@ export function useCanvas(
       drag.value.startY = point.y;
     }
 
+    // Laser drawing (local only)
+    if (laserIsDrawing.value) {
+      laserCurrentPoints.value.push(point.x, point.y);
+      return;
+    }
+
     // Draw preview
     if (draw.value.isDrawing) {
       const tool = activeTool.value;
 
-      if (tool === 'line' || tool === 'arrow') {
+      if (tool === 'freedraw') {
+        freehandPoints.value.push(point.x, point.y);
+        // Update preview with current points
+        const pts = freehandPoints.value;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let i = 0; i < pts.length; i += 2) {
+          minX = Math.min(minX, pts[i]);
+          minY = Math.min(minY, pts[i + 1]);
+          maxX = Math.max(maxX, pts[i]);
+          maxY = Math.max(maxY, pts[i + 1]);
+        }
+        previewShape.value = {
+          id: 'preview',
+          type: 'freedraw',
+          x: minX,
+          y: minY,
+          width: maxX - minX,
+          height: maxY - minY,
+          points: [...pts],
+          fill: 'transparent',
+          stroke: getColor(),
+          strokeWidth: 2,
+          createdBy: userId,
+          createdByName: userName,
+          createdAt: 0,
+        } as FreehandShape;
+      } else if (tool === 'line' || tool === 'arrow') {
+        // Snap endpoints to nearby shapes
+        let sx = draw.value.startX, sy = draw.value.startY;
+        let ex = point.x, ey = point.y;
+        const startSnap = findSnapPoint(sx, sy);
+        const endSnap = findSnapPoint(ex, ey);
+        if (startSnap) { sx = startSnap.x; sy = startSnap.y; }
+        if (endSnap) { ex = endSnap.x; ey = endSnap.y; }
+        snapTarget.value = endSnap || startSnap;
+
         previewShape.value = {
           id: 'preview',
           type: tool,
-          x: draw.value.startX,
-          y: draw.value.startY,
-          x2: point.x,
-          y2: point.y,
-          width: Math.abs(point.x - draw.value.startX),
-          height: Math.abs(point.y - draw.value.startY),
+          x: sx,
+          y: sy,
+          x2: ex,
+          y2: ey,
+          width: Math.abs(ex - sx),
+          height: Math.abs(ey - sy),
           fill: 'transparent',
           stroke: getColor(),
           strokeWidth: 2,
@@ -385,6 +650,20 @@ export function useCanvas(
   }
 
   function handleMouseUp(e: MouseEvent, svgEl: SVGSVGElement) {
+    // Laser stroke end
+    if (laserIsDrawing.value) {
+      laserIsDrawing.value = false;
+      if (laserCurrentPoints.value.length >= 4) {
+        laserStrokes.value = [...laserStrokes.value, {
+          points: [...laserCurrentPoints.value],
+          createdAt: Date.now(),
+          opacity: 1,
+        }];
+      }
+      laserCurrentPoints.value = [];
+      return;
+    }
+
     // Rubber band selection end
     if (selectionBox.value.isSelecting) {
       const sb = selectionBox.value;
@@ -404,6 +683,7 @@ export function useCanvas(
       resize.value.isResizing = false;
       resize.value.shapeId = null;
       resize.value.handle = null;
+      snapTarget.value = null;
       return;
     }
 
@@ -417,18 +697,60 @@ export function useCanvas(
       const point = getSvgPoint(e, svgEl);
       const tool = activeTool.value;
 
-      if (tool === 'line' || tool === 'arrow') {
-        const dist = Math.hypot(point.x - draw.value.startX, point.y - draw.value.startY);
+      let createdId: string | null = null;
+
+      if (tool === 'freedraw') {
+        freehandPoints.value.push(point.x, point.y);
+        const pts = freehandPoints.value;
+        if (pts.length >= 4) {
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (let i = 0; i < pts.length; i += 2) {
+            minX = Math.min(minX, pts[i]);
+            minY = Math.min(minY, pts[i + 1]);
+            maxX = Math.max(maxX, pts[i]);
+            maxY = Math.max(maxY, pts[i + 1]);
+          }
+          const id = generateId();
+          const shape: FreehandShape = {
+            id,
+            type: 'freedraw',
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY,
+            points: [...pts],
+            fill: 'transparent',
+            stroke: getColor(),
+            strokeWidth: 2,
+            createdBy: userId,
+            createdByName: userName,
+            createdAt: Date.now(),
+          };
+          callbacks.addShape(shape);
+          createdId = id;
+        }
+        freehandPoints.value = [];
+      } else if (tool === 'line' || tool === 'arrow') {
+        // Apply snap-to-shape for final coordinates
+        let sx = draw.value.startX, sy = draw.value.startY;
+        let ex = point.x, ey = point.y;
+        const startSnap = findSnapPoint(sx, sy);
+        const endSnap = findSnapPoint(ex, ey);
+        if (startSnap) { sx = startSnap.x; sy = startSnap.y; }
+        if (endSnap) { ex = endSnap.x; ey = endSnap.y; }
+
+        const dist = Math.hypot(ex - sx, ey - sy);
         if (dist > 5) {
+          const id = generateId();
           const shape = {
-            id: generateId(),
+            id,
             type: tool,
-            x: draw.value.startX,
-            y: draw.value.startY,
-            x2: point.x,
-            y2: point.y,
-            width: Math.abs(point.x - draw.value.startX),
-            height: Math.abs(point.y - draw.value.startY),
+            x: sx,
+            y: sy,
+            x2: ex,
+            y2: ey,
+            width: Math.abs(ex - sx),
+            height: Math.abs(ey - sy),
             fill: 'transparent',
             stroke: getColor(),
             strokeWidth: 2,
@@ -439,14 +761,16 @@ export function useCanvas(
             createdAt: Date.now(),
           } as LineShape | ArrowShape;
           callbacks.addShape(shape);
+          createdId = id;
         }
       } else {
         const width = Math.abs(point.x - draw.value.startX);
         const height = Math.abs(point.y - draw.value.startY);
 
         if (width > 5 && height > 5) {
+          const id = generateId();
           const shape: Shape = {
-            id: generateId(),
+            id,
             type: tool as 'rectangle' | 'circle',
             x: Math.min(point.x, draw.value.startX),
             y: Math.min(point.y, draw.value.startY),
@@ -459,9 +783,17 @@ export function useCanvas(
             createdAt: Date.now(),
           };
           callbacks.addShape(shape);
+          createdId = id;
         }
       }
+
+      // Auto-select the created shape and switch to select tool (Excalidraw style)
+      if (createdId) {
+        selectedShapeIds.value = new Set([createdId]);
+        activeTool.value = 'select';
+      }
       previewShape.value = null;
+      snapTarget.value = null;
     }
   }
 
@@ -503,7 +835,7 @@ export function useCanvas(
 
   function duplicateWithArrow(direction: 'up' | 'down' | 'left' | 'right') {
     const shape = selectedShape.value;
-    if (!shape || shape.type === 'line' || shape.type === 'arrow') return;
+    if (!shape || shape.type === 'line' || shape.type === 'arrow' || shape.type === 'freedraw') return;
 
     // Calculate new shape position
     let newX = shape.x;
@@ -566,8 +898,47 @@ export function useCanvas(
     editingText.value = '';
   }
 
+  // Tool shortcuts: number keys like Excalidraw + V for select, P for pen, etc.
+  const toolShortcuts: Record<string, Tool> = {
+    '1': 'select',
+    '2': 'hand',
+    '3': 'rectangle',
+    '4': 'circle',
+    '5': 'line',
+    '6': 'arrow',
+    '7': 'freedraw',
+    '8': 'text',
+    '9': 'laser',
+    'v': 'select',
+    'h': 'hand',
+    'r': 'rectangle',
+    'o': 'circle',
+    'l': 'line',
+    'a': 'arrow',
+    'p': 'freedraw',
+    't': 'text',
+  };
+
   function handleKeyDown(e: KeyboardEvent) {
     if (editingShapeId.value) return;
+
+    // Tool shortcuts (only without modifiers, except for 'a' which conflicts with Ctrl+A)
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      const tool = toolShortcuts[e.key];
+      if (tool) {
+        // 'a' without modifier should switch to arrow tool
+        activeTool.value = tool;
+        e.preventDefault();
+        return;
+      }
+      // Escape to select tool + deselect
+      if (e.key === 'Escape') {
+        activeTool.value = 'select';
+        selectedShapeIds.value = new Set();
+        e.preventDefault();
+        return;
+      }
+    }
 
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedShapeIds.value.size > 0) {
       deleteSelected();
@@ -614,6 +985,10 @@ export function useCanvas(
     sortedShapes,
     resizeHandles,
     selectionBox,
+    laserStrokes,
+    laserCurrentPoints,
+    laserIsDrawing,
+    snapTarget,
     handleMouseDown,
     handleMouseMove,
     handleMouseUp,

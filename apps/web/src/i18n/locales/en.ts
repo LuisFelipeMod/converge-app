@@ -1,11 +1,14 @@
 export default {
   // Toolbar
   'toolbar.select': 'Select',
+  'toolbar.hand': 'Hand',
   'toolbar.rectangle': 'Rectangle',
   'toolbar.circle': 'Circle',
   'toolbar.line': 'Line',
   'toolbar.arrow': 'Arrow',
   'toolbar.text': 'Text',
+  'toolbar.freedraw': 'Pen',
+  'toolbar.laser': 'Laser',
   'toolbar.exportPng': 'Export as PNG',
   'toolbar.png': 'PNG',
   'toolbar.zoomIn': 'Zoom in',

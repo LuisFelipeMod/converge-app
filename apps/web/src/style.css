@@ -83,6 +83,11 @@ body {
   to { transform: rotate(360deg); }
 }
 
+@keyframes snap-pulse {
+  0%, 100% { r: 6; opacity: 1; }
+  50% { r: 9; opacity: 0.6; }
+}
+
 @keyframes check-draw {
   from {
     stroke-dashoffset: 24;
@@ -116,6 +121,10 @@ body {
 .animate-check-draw {
   stroke-dasharray: 24;
   animation: check-draw 0.3s var(--ease-expo) both;
+}
+
+.animate-snap-pulse {
+  animation: snap-pulse 0.8s ease-in-out infinite;
 }
 
 /* ─── Vue TransitionGroup: stagger list ─── */

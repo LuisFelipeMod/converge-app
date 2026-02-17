@@ -1,6 +1,6 @@
 // ─── Shape Types ─────────────────────────────────────────────
 
-export type ShapeType = 'rectangle' | 'circle' | 'text' | 'line' | 'arrow';
+export type ShapeType = 'rectangle' | 'circle' | 'text' | 'line' | 'arrow' | 'freedraw';
 
 export interface BaseShape {
   id: string;
@@ -41,6 +41,9 @@ export interface LineShape extends BaseShape {
   y2: number;
   curved: boolean;
   dashed: boolean;
+  curveDirection?: number; // +1 or -1, controls which side the curve bows to
+  curveOffsetX?: number;   // custom control point offset from midpoint (set by midpoint drag)
+  curveOffsetY?: number;
 }
 
 export interface ArrowShape extends BaseShape {
@@ -49,9 +52,17 @@ export interface ArrowShape extends BaseShape {
   y2: number;
   curved: boolean;
   dashed: boolean;
+  curveDirection?: number; // +1 or -1, controls which side the curve bows to
+  curveOffsetX?: number;   // custom control point offset from midpoint (set by midpoint drag)
+  curveOffsetY?: number;
 }
 
-export type Shape = RectangleShape | CircleShape | TextShape | LineShape | ArrowShape;
+export interface FreehandShape extends BaseShape {
+  type: 'freedraw';
+  points: number[]; // flat array of [x1, y1, x2, y2, ...]
+}
+
+export type Shape = RectangleShape | CircleShape | TextShape | LineShape | ArrowShape | FreehandShape;
 
 // ─── User / Presence ────────────────────────────────────────
 

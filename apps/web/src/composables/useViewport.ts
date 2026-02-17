@@ -1,10 +1,12 @@
 import { ref, computed } from 'vue';
+import type { Ref } from 'vue';
+import type { Tool } from '@/types';
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 5;
 const ZOOM_FACTOR = 0.1;
 
-export function useViewport() {
+export function useViewport(activeToolRef?: Ref<Tool>) {
   const panX = ref(0);
   const panY = ref(0);
   const scale = ref(1);
@@ -21,6 +23,10 @@ export function useViewport() {
 
   function clampScale(s: number): number {
     return Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
+  }
+
+  function isHandTool(): boolean {
+    return activeToolRef ? activeToolRef.value === 'hand' : false;
   }
 
   function toWorldCoords(clientX: number, clientY: number, svgEl: SVGSVGElement): { x: number; y: number } {
@@ -41,25 +47,32 @@ export function useViewport() {
   }
 
   function handleWheel(e: WheelEvent, svgEl: SVGSVGElement) {
-    if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
 
-    const rect = svgEl.getBoundingClientRect();
-    const oldScale = scale.value;
-    const delta = e.deltaY > 0 ? -ZOOM_FACTOR : ZOOM_FACTOR;
-    const newScale = clampScale(oldScale + delta * oldScale);
+    // Ctrl/Cmd + scroll = zoom (also triggered by trackpad pinch-to-zoom)
+    if (e.ctrlKey || e.metaKey) {
+      const rect = svgEl.getBoundingClientRect();
+      const oldScale = scale.value;
+      const delta = e.deltaY > 0 ? -ZOOM_FACTOR : ZOOM_FACTOR;
+      const newScale = clampScale(oldScale + delta * oldScale);
 
-    // Zoom centered on cursor
-    const worldX = panX.value + (e.clientX - rect.left) / oldScale;
-    const worldY = panY.value + (e.clientY - rect.top) / oldScale;
-    panX.value = worldX - (e.clientX - rect.left) / newScale;
-    panY.value = worldY - (e.clientY - rect.top) / newScale;
-    scale.value = newScale;
+      // Zoom centered on cursor
+      const worldX = panX.value + (e.clientX - rect.left) / oldScale;
+      const worldY = panY.value + (e.clientY - rect.top) / oldScale;
+      panX.value = worldX - (e.clientX - rect.left) / newScale;
+      panY.value = worldY - (e.clientY - rect.top) / newScale;
+      scale.value = newScale;
+      return;
+    }
+
+    // Plain scroll / trackpad two-finger drag = pan
+    panX.value += e.deltaX / scale.value;
+    panY.value += e.deltaY / scale.value;
   }
 
   function startPan(e: MouseEvent) {
-    // Middle mouse button or space+left click
-    if (e.button === 1 || (spaceDown && e.button === 0)) {
+    // Middle mouse button, space+left click, or hand tool+left click
+    if (e.button === 1 || (spaceDown && e.button === 0) || (isHandTool() && e.button === 0)) {
       isPanning.value = true;
       panStart = { x: e.clientX, y: e.clientY, panX: panX.value, panY: panY.value };
       e.preventDefault();
@@ -100,7 +113,7 @@ export function useViewport() {
   }
 
   function isSpaceDown() {
-    return spaceDown;
+    return spaceDown || isHandTool();
   }
 
   function zoomIn() {

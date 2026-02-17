@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue';
-import type { Shape, LineShape, ArrowShape } from '@realtime-collab/shared';
+import { ref, toRef, watch, nextTick, computed, onMounted, onUnmounted } from 'vue';
+import type { Shape, LineShape, ArrowShape, FreehandShape } from '@realtime-collab/shared';
 import type { Tool } from '@/types';
 import { useYjs } from '@/composables/useYjs';
 import { useCanvas } from '@/composables/useCanvas';
@@ -83,7 +83,7 @@ const {
   resetView,
   updateSize,
   scale,
-} = useViewport();
+} = useViewport(toRef(store, 'activeTool'));
 
 // Track SVG size
 let resizeObserver: ResizeObserver | null = null;
@@ -129,6 +129,10 @@ const {
   commitTextEdit,
   cancelTextEdit,
   deleteSelected,
+  laserStrokes,
+  laserCurrentPoints,
+  laserIsDrawing,
+  snapTarget,
 } = useCanvas(shapes, store.userId, store.userName, {
   addShape,
   updateShape,
@@ -157,6 +161,11 @@ function onSelectTool(tool: Tool) {
   store.setTool(tool);
 }
 
+// Keep store in sync when useCanvas changes activeTool (keyboard shortcuts, auto-select)
+watch(activeTool, (tool) => {
+  if (store.activeTool !== tool) store.setTool(tool);
+});
+
 function onWheel(e: WheelEvent) {
   if (svgRef.value) vpHandleWheel(e, svgRef.value);
 }
@@ -180,7 +189,10 @@ function onDblClick(e: MouseEvent) {
 
 const svgCursor = computed(() => {
   if (isPanning.value) return 'grabbing';
+  if (activeTool.value === 'hand') return 'grab';
   if (isSpaceDown()) return 'grab';
+  if (activeTool.value === 'freedraw') return 'crosshair';
+  if (activeTool.value === 'laser') return 'crosshair';
   return 'default';
 });
 
@@ -208,18 +220,53 @@ watch(editingShapeId, async (id) => {
   }
 });
 
-// ─── Line/Arrow SVG helpers ───
+// ─── SVG path helpers ───
+
+function getFreehandPath(points: number[]): string {
+  if (points.length < 4) return '';
+  let d = `M ${points[0]},${points[1]}`;
+  if (points.length === 4) {
+    d += ` L ${points[2]},${points[3]}`;
+    return d;
+  }
+  // First segment: line to first midpoint
+  const firstMx = (points[0] + points[2]) / 2;
+  const firstMy = (points[1] + points[3]) / 2;
+  d += ` L ${firstMx},${firstMy}`;
+  // Smooth quadratic bezier through midpoints
+  for (let i = 2; i < points.length - 2; i += 2) {
+    const mx = (points[i] + points[i + 2]) / 2;
+    const my = (points[i + 1] + points[i + 3]) / 2;
+    d += ` Q ${points[i]},${points[i + 1]} ${mx},${my}`;
+  }
+  // Last segment: quadratic to final point
+  const li = points.length - 2;
+  d += ` Q ${points[li - 2]},${points[li - 1]} ${points[li]},${points[li + 1]}`;
+  return d;
+}
 
 function getLinePath(s: LineShape | ArrowShape): string {
   if (s.curved) {
     const mx = (s.x + s.x2) / 2;
     const my = (s.y + s.y2) / 2;
+
+    // If custom offset is set (from midpoint drag), use it directly
+    if (s.curveOffsetX !== undefined && s.curveOffsetY !== undefined
+        && (s.curveOffsetX !== 0 || s.curveOffsetY !== 0)) {
+      const cx = mx + s.curveOffsetX;
+      const cy = my + s.curveOffsetY;
+      return `M ${s.x},${s.y} Q ${cx},${cy} ${s.x2},${s.y2}`;
+    }
+
+    // Fallback: perpendicular offset with direction
     const dx = s.x2 - s.x;
     const dy = s.y2 - s.y;
-    // Control point perpendicular offset (30% of length)
-    const offset = Math.hypot(dx, dy) * 0.3;
-    const cx = mx - (dy / Math.hypot(dx, dy)) * offset;
-    const cy = my + (dx / Math.hypot(dx, dy)) * offset;
+    const len = Math.hypot(dx, dy);
+    if (len === 0) return `M ${s.x},${s.y} L ${s.x2},${s.y2}`;
+    const offset = len * 0.3;
+    const dir = s.curveDirection || 1;
+    const cx = mx - (dy / len) * offset * dir;
+    const cy = my + (dx / len) * offset * dir;
     return `M ${s.x},${s.y} Q ${cx},${cy} ${s.x2},${s.y2}`;
   }
   return `M ${s.x},${s.y} L ${s.x2},${s.y2}`;
@@ -228,7 +275,37 @@ function getLinePath(s: LineShape | ArrowShape): string {
 function onToggleCurved() {
   if (!selectedShapeId.value || !selectedShape.value) return;
   const s = selectedShape.value as LineShape | ArrowShape;
-  updateShape(selectedShapeId.value, { curved: !s.curved } as any);
+  const dx = s.x2 - s.x;
+  const dy = s.y2 - s.y;
+  const len = Math.hypot(dx, dy);
+  const perpDist = len * 0.3;
+
+  if (!s.curved) {
+    // straight → curved (+1): set perpendicular offset
+    const ox = len > 0 ? -(dy / len) * perpDist : 0;
+    const oy = len > 0 ? (dx / len) * perpDist : 0;
+    updateShape(selectedShapeId.value, {
+      curved: true, curveDirection: 1,
+      curveOffsetX: ox, curveOffsetY: oy,
+    } as any);
+  } else {
+    const dir = s.curveDirection || 1;
+    if (dir === 1) {
+      // curved (+1) → curved (-1): flip offset
+      const ox = len > 0 ? (dy / len) * perpDist : 0;
+      const oy = len > 0 ? -(dx / len) * perpDist : 0;
+      updateShape(selectedShapeId.value, {
+        curved: true, curveDirection: -1,
+        curveOffsetX: ox, curveOffsetY: oy,
+      } as any);
+    } else {
+      // curved (-1) → straight
+      updateShape(selectedShapeId.value, {
+        curved: false, curveDirection: 1,
+        curveOffsetX: 0, curveOffsetY: 0,
+      } as any);
+    }
+  }
 }
 
 function onToggleDashed() {
@@ -330,6 +407,13 @@ const selBoxRect = computed(() => {
         >
           <polygon points="0 0, 10 3.5, 0 7" fill="#fff" />
         </marker>
+        <filter id="laser-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
         <marker
           id="arrowhead-preview"
           markerWidth="10"
@@ -500,6 +584,36 @@ const selBoxRect = computed(() => {
             data-export-ignore
           >{{ shape.createdByName }}</text>
         </template>
+
+        <!-- Freehand -->
+        <template v-else-if="shape.type === 'freedraw'">
+          <path
+            :d="getFreehandPath((shape as FreehandShape).points)"
+            fill="none"
+            :stroke="isSelected(shape.id) ? '#fff' : shape.stroke"
+            :stroke-width="isSelected(shape.id) ? 3 : shape.strokeWidth"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="cursor-move"
+          />
+          <!-- Invisible fat hit area -->
+          <path
+            :d="getFreehandPath((shape as FreehandShape).points)"
+            fill="none"
+            stroke="transparent"
+            stroke-width="12"
+            class="cursor-move"
+          />
+          <text
+            v-if="shape.createdByName"
+            :x="shape.x"
+            :y="shape.y - 6"
+            fill="#9CA3AF"
+            font-size="10"
+            class="pointer-events-none select-none"
+            data-export-ignore
+          >{{ shape.createdByName }}</text>
+        </template>
       </template>
 
       <!-- Preview shape while drawing -->
@@ -544,6 +658,16 @@ const selBoxRect = computed(() => {
           marker-end="url(#arrowhead-preview)"
           :style="{ color: previewShape.stroke }"
         />
+        <path
+          v-else-if="previewShape.type === 'freedraw'"
+          :d="getFreehandPath((previewShape as FreehandShape).points)"
+          fill="none"
+          :stroke="previewShape.stroke"
+          :stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          opacity="0.7"
+        />
       </template>
 
       <!-- Rubber band selection box -->
@@ -560,20 +684,73 @@ const selBoxRect = computed(() => {
         class="pointer-events-none"
       />
 
+      <!-- Dashed bounding box for selected line/arrow (Excalidraw style) -->
+      <rect
+        v-if="selectedShape && (selectedShape.type === 'line' || selectedShape.type === 'arrow')"
+        :x="Math.min((selectedShape as any).x, (selectedShape as any).x2) - 4"
+        :y="Math.min((selectedShape as any).y, (selectedShape as any).y2) - 4"
+        :width="Math.abs((selectedShape as any).x2 - (selectedShape as any).x) + 8"
+        :height="Math.abs((selectedShape as any).y2 - (selectedShape as any).y) + 8"
+        fill="none"
+        stroke="#3B82F6"
+        stroke-width="1"
+        stroke-dasharray="4 3"
+        rx="2"
+        class="pointer-events-none"
+      />
+
       <!-- Resize handles (only single select) -->
       <template v-if="selectedShapeId && resizeHandles.length > 0">
-        <rect
-          v-for="h in resizeHandles"
-          :key="h.id"
-          :x="h.x"
-          :y="h.y"
-          width="8"
-          height="8"
-          fill="#fff"
-          stroke="#3B82F6"
-          stroke-width="1.5"
-          :style="{ cursor: h.cursor }"
-        />
+        <template v-for="h in resizeHandles" :key="h.id">
+          <!-- Midpoint handle for curves (diamond) -->
+          <g v-if="h.id === 'mid'" :style="{ cursor: h.cursor }">
+            <!-- Dashed line from midpoint of line to the curve handle -->
+            <line
+              v-if="selectedShape && (selectedShape.type === 'line' || selectedShape.type === 'arrow')"
+              :x1="((selectedShape as any).x + (selectedShape as any).x2) / 2"
+              :y1="((selectedShape as any).y + (selectedShape as any).y2) / 2"
+              :x2="h.x"
+              :y2="h.y"
+              stroke="#3B82F6"
+              stroke-width="1"
+              stroke-dasharray="3 2"
+              class="pointer-events-none"
+            />
+            <rect
+              :x="h.x - 4"
+              :y="h.y - 4"
+              width="8"
+              height="8"
+              fill="#fff"
+              stroke="#3B82F6"
+              stroke-width="1.5"
+              :transform="`rotate(45 ${h.x} ${h.y})`"
+            />
+          </g>
+          <!-- Endpoint handles for lines/arrows (circles) -->
+          <circle
+            v-else-if="h.id === 'start' || h.id === 'end'"
+            :cx="h.x"
+            :cy="h.y"
+            r="5"
+            fill="#fff"
+            stroke="#3B82F6"
+            stroke-width="1.5"
+            :style="{ cursor: h.cursor }"
+          />
+          <!-- Corner resize handles for rectangles/circles (squares) -->
+          <rect
+            v-else
+            :x="h.x"
+            :y="h.y"
+            width="8"
+            height="8"
+            fill="#fff"
+            stroke="#3B82F6"
+            stroke-width="1.5"
+            :style="{ cursor: h.cursor }"
+          />
+        </template>
       </template>
 
       <!-- Toolbox above selected shape(s) -->
@@ -616,6 +793,55 @@ const selBoxRect = computed(() => {
           :placeholder="t('canvas.typeHere')"
         />
       </foreignObject>
+
+      <!-- Laser strokes (local-only, fading) -->
+      <template v-for="(stroke, idx) in laserStrokes" :key="'laser-' + idx">
+        <path
+          :d="getFreehandPath(stroke.points)"
+          fill="none"
+          stroke="#ff3333"
+          :stroke-width="3"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          :opacity="stroke.opacity"
+          filter="url(#laser-glow)"
+          class="pointer-events-none"
+        />
+      </template>
+      <!-- Laser current stroke (while drawing) -->
+      <path
+        v-if="laserIsDrawing && laserCurrentPoints.length >= 4"
+        :d="getFreehandPath(laserCurrentPoints)"
+        fill="none"
+        stroke="#ff3333"
+        :stroke-width="3"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        filter="url(#laser-glow)"
+        class="pointer-events-none"
+      />
+      <!-- Laser dot at tip -->
+      <circle
+        v-if="laserIsDrawing && laserCurrentPoints.length >= 2"
+        :cx="laserCurrentPoints[laserCurrentPoints.length - 2]"
+        :cy="laserCurrentPoints[laserCurrentPoints.length - 1]"
+        r="4"
+        fill="#ff3333"
+        filter="url(#laser-glow)"
+        class="pointer-events-none"
+      />
+
+      <!-- Snap-to-shape indicator -->
+      <circle
+        v-if="snapTarget"
+        :cx="snapTarget.x"
+        :cy="snapTarget.y"
+        r="6"
+        fill="transparent"
+        stroke="#3B82F6"
+        stroke-width="2"
+        class="pointer-events-none animate-snap-pulse"
+      />
 
       <!-- Remote cursors (spring-interpolated) -->
       <CursorOverlay :cursors="smoothCursors" />
