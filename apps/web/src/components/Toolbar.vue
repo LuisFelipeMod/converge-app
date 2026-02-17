@@ -34,7 +34,7 @@ const currentExportState = computed(() => props.exportState ?? 'idle');
 </script>
 
 <template>
-  <div class="absolute top-4 left-1/2 -translate-x-1/2 flex gap-1 glass rounded-xl p-1 shadow-2xl z-10 animate-slide-down">
+  <div class="absolute top-4 -translate-x-1/2 flex gap-1 glass rounded-xl p-1 shadow-2xl z-10 animate-slide-down" style="right: 1rem;">
     <button
       v-for="tool in tools"
       :key="tool.id"
