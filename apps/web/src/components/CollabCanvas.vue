@@ -38,7 +38,7 @@ const {
   userId: store.userId,
   name: store.userName,
   avatar: store.userAvatar || undefined,
-  token: store.token,
+  token: store.token!,
 });
 
 watch(connected, (val) => store.setConnected(val));
