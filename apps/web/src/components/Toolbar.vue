@@ -2,6 +2,21 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Tool } from '@/types';
+import {
+  MousePointer2,
+  Hand,
+  Square,
+  Circle,
+  Minus,
+  MoveRight,
+  Pencil,
+  Type,
+  Crosshair,
+  Download,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+} from 'lucide-vue-next';
 
 const { t } = useI18n();
 
@@ -19,15 +34,15 @@ const emit = defineEmits<{
 }>();
 
 const tools = computed(() => [
-  { id: 'select' as Tool, label: t('toolbar.select'), icon: '↖', shortcut: 'V' },
-  { id: 'hand' as Tool, label: t('toolbar.hand'), icon: '✋', shortcut: 'H' },
-  { id: 'rectangle' as Tool, label: t('toolbar.rectangle'), icon: '▭', shortcut: 'R' },
-  { id: 'circle' as Tool, label: t('toolbar.circle'), icon: '○', shortcut: 'O' },
-  { id: 'line' as Tool, label: t('toolbar.line'), icon: '╱', shortcut: 'L' },
-  { id: 'arrow' as Tool, label: t('toolbar.arrow'), icon: '→', shortcut: 'A' },
-  { id: 'freedraw' as Tool, label: t('toolbar.freedraw'), icon: '✏', shortcut: 'P' },
-  { id: 'text' as Tool, label: t('toolbar.text'), icon: 'T', shortcut: 'T' },
-  { id: 'laser' as Tool, label: t('toolbar.laser'), icon: '◉', shortcut: '9' },
+  { id: 'select' as Tool, label: t('toolbar.select'), icon: MousePointer2, shortcut: 'V' },
+  { id: 'hand' as Tool, label: t('toolbar.hand'), icon: Hand, shortcut: 'H' },
+  { id: 'rectangle' as Tool, label: t('toolbar.rectangle'), icon: Square, shortcut: 'R' },
+  { id: 'circle' as Tool, label: t('toolbar.circle'), icon: Circle, shortcut: 'O' },
+  { id: 'line' as Tool, label: t('toolbar.line'), icon: Minus, shortcut: 'L' },
+  { id: 'arrow' as Tool, label: t('toolbar.arrow'), icon: MoveRight, shortcut: 'A' },
+  { id: 'freedraw' as Tool, label: t('toolbar.freedraw'), icon: Pencil, shortcut: 'P' },
+  { id: 'text' as Tool, label: t('toolbar.text'), icon: Type, shortcut: 'T' },
+  { id: 'laser' as Tool, label: t('toolbar.laser'), icon: Crosshair, shortcut: '9' },
 ]);
 
 const currentExportState = computed(() => props.exportState ?? 'idle');
@@ -39,7 +54,7 @@ const currentExportState = computed(() => props.exportState ?? 'idle');
       v-for="tool in tools"
       :key="tool.id"
       :class="[
-        'px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 btn-press',
+        'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 btn-press',
         props.activeTool === tool.id
           ? 'bg-blue-600/90 text-white shadow-md shadow-blue-500/20'
           : 'text-gray-300 hover:bg-white/5 hover:text-white',
@@ -47,7 +62,8 @@ const currentExportState = computed(() => props.exportState ?? 'idle');
       :title="`${tool.label} (${tool.shortcut})`"
       @click="emit('select-tool', tool.id)"
     >
-      {{ tool.icon }} {{ tool.label }}
+      <component :is="tool.icon" :size="16" :stroke-width="2" />
+      {{ tool.label }}
     </button>
 
     <!-- Separator -->
@@ -55,13 +71,14 @@ const currentExportState = computed(() => props.exportState ?? 'idle');
 
     <!-- Export button -->
     <button
-      class="px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white transition-all duration-200 btn-press flex items-center gap-1.5"
+      class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white transition-all duration-200 btn-press"
       :title="t('toolbar.exportPng')"
       :disabled="currentExportState !== 'idle'"
       @click="emit('export-png')"
     >
       <!-- Idle state -->
       <template v-if="currentExportState === 'idle'">
+        <Download :size="16" :stroke-width="2" />
         {{ t('toolbar.png') }}
       </template>
       <!-- Loading state -->
@@ -84,25 +101,25 @@ const currentExportState = computed(() => props.exportState ?? 'idle');
 
     <!-- Zoom controls -->
     <button
-      class="px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white transition-all duration-200 btn-press"
+      class="flex items-center px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white transition-all duration-200 btn-press"
       :title="t('toolbar.zoomIn')"
       @click="emit('zoom-in')"
     >
-      +
+      <ZoomIn :size="16" :stroke-width="2" />
     </button>
     <button
-      class="px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white transition-all duration-200 btn-press"
+      class="flex items-center px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white transition-all duration-200 btn-press"
       :title="t('toolbar.zoomOut')"
       @click="emit('zoom-out')"
     >
-      −
+      <ZoomOut :size="16" :stroke-width="2" />
     </button>
     <button
-      class="px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white transition-all duration-200 btn-press"
+      class="flex items-center px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-white/5 hover:text-white transition-all duration-200 btn-press"
       :title="t('toolbar.resetView')"
       @click="emit('reset-view')"
     >
-      ⟲
+      <RotateCcw :size="16" :stroke-width="2" />
     </button>
   </div>
 </template>
