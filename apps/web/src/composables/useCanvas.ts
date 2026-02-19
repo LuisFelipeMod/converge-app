@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import type { Shape, TextShape, LineShape, ArrowShape, FreehandShape } from '@realtime-collab/shared';
+import type { Shape, TextShape, LineShape, ArrowShape, FreehandShape, AnchorPosition, ShapeConnection } from '@realtime-collab/shared';
 import type { Tool, DragState, DrawState, ResizeState, HandleInfo, SelectionBoxState, LaserStroke } from '@/types';
 import { THROTTLE_MS, PRESENCE_COLORS } from '@realtime-collab/shared';
 
@@ -296,6 +296,91 @@ export function useCanvas(
     return best;
   }
 
+  // ─── Connector helpers ───
+
+  const ANCHOR_ORDER: AnchorPosition[] = ['top', 'right', 'bottom', 'left'];
+
+  function getAnchorPoint(shape: Shape, anchor: AnchorPosition): { x: number; y: number } {
+    const pts = getShapeSnapPoints(shape);
+    const idx = ANCHOR_ORDER.indexOf(anchor);
+    if (pts.length > idx && idx >= 0) return pts[idx];
+    return { x: shape.x, y: shape.y };
+  }
+
+  function getAnchorForSnapPoint(shapeId: string, snapX: number, snapY: number): AnchorPosition | null {
+    const shape = shapes.value.get(shapeId);
+    if (!shape) return null;
+    const pts = getShapeSnapPoints(shape);
+    for (let i = 0; i < pts.length; i++) {
+      if (Math.abs(pts[i].x - snapX) < 1 && Math.abs(pts[i].y - snapY) < 1) {
+        return ANCHOR_ORDER[i];
+      }
+    }
+    return null;
+  }
+
+  function buildConnection(snap: { x: number; y: number; shapeId: string } | null): ShapeConnection | null {
+    if (!snap) return null;
+    const anchor = getAnchorForSnapPoint(snap.shapeId, snap.x, snap.y);
+    if (!anchor) return null;
+    return { shapeId: snap.shapeId, anchor };
+  }
+
+  function updateConnectedArrows(movedShapeIds: Set<string>) {
+    for (const [id, shape] of shapes.value) {
+      if (shape.type !== 'line' && shape.type !== 'arrow') continue;
+      if (movedShapeIds.has(id)) continue; // arrow is already being moved
+      const ls = shape as LineShape | ArrowShape;
+      const updates: Record<string, any> = {};
+
+      if (ls.connectedStart && movedShapeIds.has(ls.connectedStart.shapeId)) {
+        const target = shapes.value.get(ls.connectedStart.shapeId);
+        if (target) {
+          const pt = getAnchorPoint(target, ls.connectedStart.anchor);
+          updates.x = pt.x;
+          updates.y = pt.y;
+        }
+      }
+      if (ls.connectedEnd && movedShapeIds.has(ls.connectedEnd.shapeId)) {
+        const target = shapes.value.get(ls.connectedEnd.shapeId);
+        if (target) {
+          const pt = getAnchorPoint(target, ls.connectedEnd.anchor);
+          updates.x2 = pt.x;
+          updates.y2 = pt.y;
+        }
+      }
+      if (Object.keys(updates).length > 0) {
+        if (updates.x !== undefined || updates.x2 !== undefined) {
+          const finalX = updates.x ?? ls.x;
+          const finalX2 = updates.x2 ?? ls.x2;
+          const finalY = updates.y ?? ls.y;
+          const finalY2 = updates.y2 ?? ls.y2;
+          updates.width = Math.abs(finalX2 - finalX);
+          updates.height = Math.abs(finalY2 - finalY);
+        }
+        callbacks.updateShape(id, updates);
+      }
+    }
+  }
+
+  function cleanupConnectionsForDeletedShapes(deletedIds: Set<string>) {
+    for (const [id, shape] of shapes.value) {
+      if (shape.type !== 'line' && shape.type !== 'arrow') continue;
+      if (deletedIds.has(id)) continue;
+      const ls = shape as LineShape | ArrowShape;
+      const updates: Record<string, any> = {};
+      if (ls.connectedStart && deletedIds.has(ls.connectedStart.shapeId)) {
+        updates.connectedStart = null;
+      }
+      if (ls.connectedEnd && deletedIds.has(ls.connectedEnd.shapeId)) {
+        updates.connectedEnd = null;
+      }
+      if (Object.keys(updates).length > 0) {
+        callbacks.updateShape(id, updates);
+      }
+    }
+  }
+
   // ─── Mouse handlers ───
 
   function handleMouseDown(e: MouseEvent, svgEl: SVGSVGElement) {
@@ -350,6 +435,28 @@ export function useCanvas(
 
       const hit = findShapeAt(point.x, point.y);
       if (hit) {
+        // Alt+click: duplicate the clicked shape(s)
+        if (e.altKey) {
+          if (!selectedShapeIds.value.has(hit.id)) {
+            selectedShapeIds.value = new Set([hit.id]);
+          }
+          duplicateSelected();
+          // Start dragging the new duplicates
+          const firstNewId = selectedShapeIds.value.values().next().value;
+          const firstNew = firstNewId ? shapes.value.get(firstNewId) : null;
+          if (firstNew) {
+            drag.value = {
+              isDragging: true,
+              shapeId: firstNewId!,
+              startX: point.x,
+              startY: point.y,
+              offsetX: point.x - firstNew.x,
+              offsetY: point.y - firstNew.y,
+            };
+          }
+          return;
+        }
+
         if (e.shiftKey) {
           // Toggle shape in/out of selection
           const newSet = new Set(selectedShapeIds.value);
@@ -469,7 +576,7 @@ export function useCanvas(
         return;
       }
 
-      // Endpoint drag for lines/arrows (with snap-to-shape)
+      // Endpoint drag for lines/arrows (with snap-to-shape + connection tracking)
       if (r.handle === 'start') {
         let newX = r.origX + dx;
         let newY = r.origY + dy;
@@ -479,14 +586,15 @@ export function useCanvas(
         callbacks.updateShape(shapeId, {
           x: newX,
           y: newY,
-          width: Math.abs(r.origW - newX),  // origW stores x2
-          height: Math.abs(r.origH - newY), // origH stores y2
+          width: Math.abs(r.origW - newX),
+          height: Math.abs(r.origH - newY),
+          connectedStart: buildConnection(snap),
         } as any);
         return;
       }
       if (r.handle === 'end') {
-        let newX2 = r.origW + dx;  // origW stores original x2
-        let newY2 = r.origH + dy;  // origH stores original y2
+        let newX2 = r.origW + dx;
+        let newY2 = r.origH + dy;
         const snap = findSnapPoint(newX2, newY2, new Set([shapeId]));
         if (snap) { newX2 = snap.x; newY2 = snap.y; }
         snapTarget.value = snap;
@@ -495,6 +603,7 @@ export function useCanvas(
           y2: newY2,
           width: Math.abs(newX2 - r.origX),
           height: Math.abs(newY2 - r.origY),
+          connectedEnd: buildConnection(snap),
         } as any);
         return;
       }
@@ -529,6 +638,7 @@ export function useCanvas(
       }
 
       callbacks.updateShape(shapeId, { x: newX, y: newY, width: newW, height: newH });
+      updateConnectedArrows(new Set([shapeId]));
       return;
     }
 
@@ -562,6 +672,9 @@ export function useCanvas(
       }
       drag.value.startX = point.x;
       drag.value.startY = point.y;
+
+      // Update arrows connected to moved shapes
+      updateConnectedArrows(selectedShapeIds.value);
     }
 
     // Laser drawing (local only)
@@ -731,7 +844,7 @@ export function useCanvas(
         }
         freehandPoints.value = [];
       } else if (tool === 'line' || tool === 'arrow') {
-        // Apply snap-to-shape for final coordinates
+        // Apply snap-to-shape for final coordinates + save connections
         let sx = draw.value.startX, sy = draw.value.startY;
         let ex = point.x, ey = point.y;
         const startSnap = findSnapPoint(sx, sy);
@@ -756,6 +869,8 @@ export function useCanvas(
             strokeWidth: 2,
             curved: false,
             dashed: false,
+            connectedStart: buildConnection(startSnap),
+            connectedEnd: buildConnection(endSnap),
             createdBy: userId,
             createdByName: userName,
             createdAt: Date.now(),
@@ -810,7 +925,11 @@ export function useCanvas(
     if (pendingTextShape.value && editingShapeId.value === pendingTextShape.value.id) {
       const text = editingText.value.trim();
       if (text) {
-        callbacks.addShape({ ...pendingTextShape.value, text });
+        const shape = { ...pendingTextShape.value, text };
+        callbacks.addShape(shape);
+        // Auto-select created text and switch to select tool
+        selectedShapeIds.value = new Set([shape.id]);
+        activeTool.value = 'select';
       }
       pendingTextShape.value = null;
     } else if (editingShapeId.value) {
@@ -826,8 +945,92 @@ export function useCanvas(
     editingText.value = '';
   }
 
-  function deleteSelected() {
+  // ─── Copy / Paste / Duplicate ───
+
+  const clipboard = ref<Shape[]>([]);
+  const DUPLICATE_OFFSET = 20;
+
+  function duplicateShapes(shapesToDupe: Shape[], offset = DUPLICATE_OFFSET): string[] {
+    const idMap = new Map<string, string>();
+    const newIds: string[] = [];
+
+    for (const s of shapesToDupe) {
+      const newId = generateId();
+      idMap.set(s.id, newId);
+      const clone: any = {
+        ...s,
+        id: newId,
+        x: s.x + offset,
+        y: s.y + offset,
+        createdBy: userId,
+        createdByName: userName,
+        createdAt: Date.now(),
+      };
+      if (s.type === 'line' || s.type === 'arrow') {
+        const ls = s as LineShape | ArrowShape;
+        clone.x2 = ls.x2 + offset;
+        clone.y2 = ls.y2 + offset;
+        // Clear connections (cloned shapes aren't connected)
+        clone.connectedStart = null;
+        clone.connectedEnd = null;
+      }
+      if (s.type === 'freedraw') {
+        const fs = s as FreehandShape;
+        const newPoints = [...fs.points];
+        for (let i = 0; i < newPoints.length; i += 2) {
+          newPoints[i] += offset;
+          newPoints[i + 1] += offset;
+        }
+        clone.points = newPoints;
+      }
+      callbacks.addShape(clone);
+      newIds.push(newId);
+    }
+    return newIds;
+  }
+
+  function duplicateSelected() {
+    if (selectedShapeIds.value.size === 0) return;
+    const shapesToDupe: Shape[] = [];
     for (const id of selectedShapeIds.value) {
+      const s = shapes.value.get(id);
+      if (s) shapesToDupe.push(s);
+    }
+    const newIds = duplicateShapes(shapesToDupe);
+    selectedShapeIds.value = new Set(newIds);
+  }
+
+  function copySelected() {
+    clipboard.value = [];
+    for (const id of selectedShapeIds.value) {
+      const s = shapes.value.get(id);
+      if (s) clipboard.value.push({ ...s });
+    }
+  }
+
+  function pasteClipboard() {
+    if (clipboard.value.length === 0) return;
+    const newIds = duplicateShapes(clipboard.value);
+    selectedShapeIds.value = new Set(newIds);
+    // Shift clipboard so next paste offsets again
+    clipboard.value = clipboard.value.map((s) => ({
+      ...s,
+      x: s.x + DUPLICATE_OFFSET,
+      y: s.y + DUPLICATE_OFFSET,
+      ...(s.type === 'line' || s.type === 'arrow' ? {
+        x2: (s as any).x2 + DUPLICATE_OFFSET,
+        y2: (s as any).y2 + DUPLICATE_OFFSET,
+      } : {}),
+      ...(s.type === 'freedraw' ? {
+        points: (s as FreehandShape).points.map((v, i) => v + DUPLICATE_OFFSET),
+      } : {}),
+    }));
+  }
+
+  function deleteSelected() {
+    const deletedIds = new Set(selectedShapeIds.value);
+    cleanupConnectionsForDeletedShapes(deletedIds);
+    for (const id of deletedIds) {
       callbacks.deleteShape(id);
     }
     selectedShapeIds.value = new Set();
@@ -845,23 +1048,38 @@ export function useCanvas(
     else if (direction === 'down') newY = shape.y + shape.height + DUPLICATE_GAP;
     else if (direction === 'up') newY = shape.y - shape.height - DUPLICATE_GAP;
 
-    // Calculate arrow start/end points (edge centers)
+    // Calculate arrow start/end points (edge centers) and anchors
     let ax1 = 0, ay1 = 0, ax2 = 0, ay2 = 0;
+    let startAnchor: AnchorPosition = 'right', endAnchor: AnchorPosition = 'left';
     if (direction === 'right') {
       ax1 = shape.x + shape.width; ay1 = shape.y + shape.height / 2;
       ax2 = newX; ay2 = newY + shape.height / 2;
+      startAnchor = 'right'; endAnchor = 'left';
     } else if (direction === 'left') {
       ax1 = shape.x; ay1 = shape.y + shape.height / 2;
       ax2 = newX + shape.width; ay2 = newY + shape.height / 2;
+      startAnchor = 'left'; endAnchor = 'right';
     } else if (direction === 'down') {
       ax1 = shape.x + shape.width / 2; ay1 = shape.y + shape.height;
       ax2 = newX + shape.width / 2; ay2 = newY;
+      startAnchor = 'bottom'; endAnchor = 'top';
     } else if (direction === 'up') {
       ax1 = shape.x + shape.width / 2; ay1 = shape.y;
       ax2 = newX + shape.width / 2; ay2 = newY + shape.height;
+      startAnchor = 'top'; endAnchor = 'bottom';
     }
 
-    // Create arrow
+    // Clone shape first (need its ID for connection)
+    const newShape: Shape = {
+      ...shape,
+      id: generateId(),
+      x: newX,
+      y: newY,
+      text: '',
+      createdAt: Date.now(),
+    };
+
+    // Create arrow with connections
     const arrowShape: ArrowShape = {
       id: generateId(),
       type: 'arrow',
@@ -874,18 +1092,10 @@ export function useCanvas(
       strokeWidth: 2,
       curved: false,
       dashed: false,
+      connectedStart: { shapeId: shape.id, anchor: startAnchor },
+      connectedEnd: { shapeId: newShape.id, anchor: endAnchor },
       createdBy: userId,
       createdByName: userName,
-      createdAt: Date.now(),
-    };
-
-    // Clone shape
-    const newShape: Shape = {
-      ...shape,
-      id: generateId(),
-      x: newX,
-      y: newY,
-      text: '',
       createdAt: Date.now(),
     };
 
@@ -947,6 +1157,22 @@ export function useCanvas(
 
     if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
       callbacks.undo();
+      e.preventDefault();
+    }
+
+    if (e.key === 'c' && (e.ctrlKey || e.metaKey) && selectedShapeIds.value.size > 0) {
+      copySelected();
+      e.preventDefault();
+    }
+
+    if (e.key === 'v' && (e.ctrlKey || e.metaKey) && clipboard.value.length > 0) {
+      pasteClipboard();
+      e.preventDefault();
+      return; // prevent 'v' from switching to select tool
+    }
+
+    if (e.key === 'd' && (e.ctrlKey || e.metaKey) && selectedShapeIds.value.size > 0) {
+      duplicateSelected();
       e.preventDefault();
     }
 

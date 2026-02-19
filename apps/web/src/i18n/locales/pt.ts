@@ -50,6 +50,42 @@ export default {
   // Auth
   'auth.authenticating': 'Autenticando...',
 
+  // Dashboard sections
+  'app.myDocuments': 'Meus Documentos',
+  'app.sharedWithMe': 'Compartilhados comigo',
+  'app.share': 'Compartilhar',
+  'app.ownerLabel': 'por {name}',
+
+  // Sharing
+  'share.title': 'Compartilhar documento',
+  'share.emailLabel': 'Convidar por email',
+  'share.emailPlaceholder': 'Digite o email...',
+  'share.invite': 'Convidar',
+  'share.linkLabel': 'Compartilhar via link',
+  'share.generateLink': 'Gerar link',
+  'share.copyLink': 'Copiar link',
+  'share.linkCopied': 'Link copiado!',
+  'share.deactivateLink': 'Desativar link',
+  'share.currentShares': 'Pessoas com acesso',
+  'share.pending': 'Pendente',
+  'share.accepted': 'Aceito',
+  'share.remove': 'Remover',
+  'share.owner': 'Dono',
+  'share.userNotFound': 'Usuario nao encontrado',
+  'share.alreadyShared': 'Ja compartilhado com este usuario',
+  'share.cannotShareSelf': 'Nao e possivel compartilhar consigo mesmo',
+  'share.close': 'Fechar',
+
+  // Invitations
+  'invitation.title': 'Convites',
+  'invitation.from': 'de',
+  'invitation.accept': 'Aceitar',
+  'invitation.decline': 'Recusar',
+  'invitation.empty': 'Nenhum convite pendente',
+  'invitation.acceptLink': 'Aceitar convite',
+  'invitation.joinDocument': 'Voce foi convidado para "{name}"',
+  'invitation.loginRequired': 'Faca login para aceitar este convite',
+
   // Presence
   'presence.you': '(voce)',
 };

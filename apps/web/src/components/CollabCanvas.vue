@@ -450,10 +450,11 @@ const selBoxRect = computed(() => {
             :y="shape.y + shape.height / 2"
             text-anchor="middle"
             dominant-baseline="central"
-            fill="#fff"
-            font-size="14"
+            :fill="shape.textColor || '#fff'"
+            :font-size="shape.fontSize || 14"
             :font-weight="shape.bold ? 'bold' : 'normal'"
             :font-style="shape.italic ? 'italic' : 'normal'"
+            :font-family="shape.fontFamily || 'sans-serif'"
             class="pointer-events-none select-none"
           >{{ shape.text }}</text>
           <text
@@ -485,10 +486,11 @@ const selBoxRect = computed(() => {
             :y="shape.y + shape.height / 2"
             text-anchor="middle"
             dominant-baseline="central"
-            fill="#fff"
-            font-size="14"
+            :fill="shape.textColor || '#fff'"
+            :font-size="shape.fontSize || 14"
             :font-weight="shape.bold ? 'bold' : 'normal'"
             :font-style="shape.italic ? 'italic' : 'normal'"
+            :font-family="shape.fontFamily || 'sans-serif'"
             class="pointer-events-none select-none"
           >{{ shape.text }}</text>
           <text
@@ -507,11 +509,12 @@ const selBoxRect = computed(() => {
           <text
             v-if="editingShapeId !== shape.id"
             :x="shape.x"
-            :y="shape.y + 20"
-            fill="#fff"
-            :font-size="(shape as any).fontSize || 16"
+            :y="shape.y + (shape.fontSize || 16) * 1.2"
+            :fill="shape.textColor || '#fff'"
+            :font-size="shape.fontSize || 16"
             :font-weight="shape.bold ? 'bold' : 'normal'"
             :font-style="shape.italic ? 'italic' : 'normal'"
+            :font-family="shape.fontFamily || 'sans-serif'"
             class="cursor-move select-none"
           >{{ shape.text }}</text>
           <text
@@ -770,8 +773,9 @@ const selBoxRect = computed(() => {
         v-if="editingShapeId && getEditingShape()"
         :x="getEditingShape()!.x"
         :y="getEditingShape()!.y"
-        :width="getEditingShape()!.width"
-        :height="getEditingShape()!.height"
+        :width="Math.max(getEditingShape()!.width, 200)"
+        :height="Math.max(getEditingShape()!.height, 40)"
+        @mousedown.stop
       >
         <textarea
           ref="textInputRef"
@@ -779,16 +783,18 @@ const selBoxRect = computed(() => {
           @input="editingText = ($event.target as HTMLTextAreaElement).value"
           @keydown="onTextKeyDown"
           @blur="commitTextEdit"
-          class="w-full h-full bg-transparent text-white text-sm resize-none outline-none"
+          class="w-full h-full bg-transparent text-white resize-none outline-none"
           :class="getEditingShape()!.type === 'text' ? 'text-left' : 'text-center'"
           :style="{
             display: 'flex',
             alignItems: getEditingShape()!.type === 'text' ? 'flex-start' : 'center',
             justifyContent: getEditingShape()!.type === 'text' ? 'flex-start' : 'center',
             padding: getEditingShape()!.type === 'text' ? '0px' : '4px',
-            fontSize: getEditingShape()!.type === 'text' ? ((getEditingShape() as any).fontSize || 16) + 'px' : '14px',
+            fontSize: (getEditingShape()!.fontSize || 16) + 'px',
             fontWeight: getEditingShape()!.bold ? 'bold' : 'normal',
             fontStyle: getEditingShape()!.italic ? 'italic' : 'normal',
+            fontFamily: getEditingShape()!.fontFamily || 'sans-serif',
+            color: getEditingShape()!.textColor || '#fff',
           }"
           :placeholder="t('canvas.typeHere')"
         />

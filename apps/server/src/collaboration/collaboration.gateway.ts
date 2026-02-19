@@ -12,6 +12,7 @@ import { Server, Socket } from 'socket.io';
 import * as Y from 'yjs';
 import { WsEvent } from '@realtime-collab/shared';
 import { CollaborationService } from './collaboration.service';
+import { SharingService } from '../sharing/sharing.service';
 import { WsAuthGuard } from '../auth/ws-auth.guard';
 
 @WebSocketGateway({
@@ -30,7 +31,10 @@ export class CollaborationGateway
   private readonly logger = new Logger(CollaborationGateway.name);
   private clientRooms = new Map<string, string>();
 
-  constructor(private collaborationService: CollaborationService) {}
+  constructor(
+    private collaborationService: CollaborationService,
+    private sharingService: SharingService,
+  ) {}
 
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`);
@@ -57,6 +61,15 @@ export class CollaborationGateway
     @MessageBody() data: { documentId: string },
   ) {
     const { documentId } = data;
+    const userId = client.data.user?.userId;
+
+    if (userId) {
+      const hasAccess = await this.sharingService.canAccessDocument(documentId, userId);
+      if (!hasAccess) {
+        client.emit(WsEvent.DocumentError, { message: 'Access denied' });
+        return;
+      }
+    }
 
     const previousRoom = this.clientRooms.get(client.id);
     if (previousRoom) {

@@ -50,6 +50,42 @@ export default {
   // Auth
   'auth.authenticating': 'Authenticating...',
 
+  // Dashboard sections
+  'app.myDocuments': 'My Documents',
+  'app.sharedWithMe': 'Shared with me',
+  'app.share': 'Share',
+  'app.ownerLabel': 'by {name}',
+
+  // Sharing
+  'share.title': 'Share document',
+  'share.emailLabel': 'Invite by email',
+  'share.emailPlaceholder': 'Enter email address...',
+  'share.invite': 'Invite',
+  'share.linkLabel': 'Share via link',
+  'share.generateLink': 'Generate link',
+  'share.copyLink': 'Copy link',
+  'share.linkCopied': 'Link copied!',
+  'share.deactivateLink': 'Deactivate link',
+  'share.currentShares': 'People with access',
+  'share.pending': 'Pending',
+  'share.accepted': 'Accepted',
+  'share.remove': 'Remove',
+  'share.owner': 'Owner',
+  'share.userNotFound': 'User not found',
+  'share.alreadyShared': 'Already shared with this user',
+  'share.cannotShareSelf': 'Cannot share with yourself',
+  'share.close': 'Close',
+
+  // Invitations
+  'invitation.title': 'Invitations',
+  'invitation.from': 'from',
+  'invitation.accept': 'Accept',
+  'invitation.decline': 'Decline',
+  'invitation.empty': 'No pending invitations',
+  'invitation.acceptLink': 'Accept invite',
+  'invitation.joinDocument': 'You have been invited to "{name}"',
+  'invitation.loginRequired': 'Log in to accept this invitation',
+
   // Presence
   'presence.you': '(you)',
 };

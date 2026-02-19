@@ -17,6 +17,11 @@ model User {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
+  ownedDocuments  Document[]      @relation("DocumentOwner")
+  sharedDocuments DocumentShare[] @relation("SharedWithUser")
+  sentShares      DocumentShare[] @relation("SharedByUser")
+  shareLinks      ShareLink[]
+
   @@unique([provider, providerId])
   @@map("users")
 }
@@ -25,11 +30,56 @@ model Document {
   id        String      @id @default(uuid())
   name      String
   archived  Boolean     @default(false)
+  ownerId   String?     @map("owner_id")
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
-  updates   YjsUpdate[]
 
+  owner      User?           @relation("DocumentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  updates    YjsUpdate[]
+  shares     DocumentShare[]
+  shareLinks ShareLink[]
+
+  @@index([ownerId])
   @@map("documents")
+}
+
+enum ShareStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model DocumentShare {
+  id           String      @id @default(uuid())
+  documentId   String      @map("document_id")
+  sharedWithId String      @map("shared_with_id")
+  sharedById   String      @map("shared_by_id")
+  status       ShareStatus @default(PENDING)
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  sharedWith User     @relation("SharedWithUser", fields: [sharedWithId], references: [id], onDelete: Cascade)
+  sharedBy   User     @relation("SharedByUser", fields: [sharedById], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, sharedWithId])
+  @@index([sharedWithId, status])
+  @@map("document_shares")
+}
+
+model ShareLink {
+  id          String   @id @default(uuid())
+  documentId  String   @map("document_id")
+  token       String   @unique @default(uuid())
+  createdById String   @map("created_by_id")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  document  Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("share_links")
 }
 
 model YjsUpdate {

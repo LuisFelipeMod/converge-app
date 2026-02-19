@@ -18,6 +18,9 @@ export interface BaseShape {
   text?: string;
   bold?: boolean;
   italic?: boolean;
+  fontFamily?: string;
+  fontSize?: number;
+  textColor?: string;
 }
 
 export interface RectangleShape extends BaseShape {
@@ -32,7 +35,13 @@ export interface CircleShape extends BaseShape {
 
 export interface TextShape extends BaseShape {
   type: 'text';
-  fontSize: number;
+}
+
+export type AnchorPosition = 'top' | 'right' | 'bottom' | 'left';
+
+export interface ShapeConnection {
+  shapeId: string;
+  anchor: AnchorPosition;
 }
 
 export interface LineShape extends BaseShape {
@@ -44,6 +53,8 @@ export interface LineShape extends BaseShape {
   curveDirection?: number; // +1 or -1, controls which side the curve bows to
   curveOffsetX?: number;   // custom control point offset from midpoint (set by midpoint drag)
   curveOffsetY?: number;
+  connectedStart?: ShapeConnection | null;
+  connectedEnd?: ShapeConnection | null;
 }
 
 export interface ArrowShape extends BaseShape {
@@ -55,6 +66,8 @@ export interface ArrowShape extends BaseShape {
   curveDirection?: number; // +1 or -1, controls which side the curve bows to
   curveOffsetX?: number;   // custom control point offset from midpoint (set by midpoint drag)
   curveOffsetY?: number;
+  connectedStart?: ShapeConnection | null;
+  connectedEnd?: ShapeConnection | null;
 }
 
 export interface FreehandShape extends BaseShape {
@@ -78,8 +91,33 @@ export interface UserPresence {
 export interface DocumentMeta {
   id: string;
   name: string;
+  ownerId: string | null;
+  owner?: { name: string; email: string } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── Sharing Types ─────────────────────────────────────────
+
+export interface DocumentShareInfo {
+  id: string;
+  sharedWith: { name: string; email: string };
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
+  createdAt: string;
+}
+
+export interface InvitationInfo {
+  id: string;
+  document: { id: string; name: string };
+  sharedBy: { name: string; email: string; avatar?: string };
+  createdAt: string;
+}
+
+export interface ShareLinkInfo {
+  id: string;
+  token: string;
+  documentName: string;
+  active: boolean;
 }
 
 // ─── WebSocket Events ───────────────────────────────────────

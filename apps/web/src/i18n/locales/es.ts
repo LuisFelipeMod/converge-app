@@ -50,6 +50,42 @@ export default {
   // Auth
   'auth.authenticating': 'Autenticando...',
 
+  // Dashboard sections
+  'app.myDocuments': 'Mis Documentos',
+  'app.sharedWithMe': 'Compartidos conmigo',
+  'app.share': 'Compartir',
+  'app.ownerLabel': 'por {name}',
+
+  // Sharing
+  'share.title': 'Compartir documento',
+  'share.emailLabel': 'Invitar por email',
+  'share.emailPlaceholder': 'Ingrese el email...',
+  'share.invite': 'Invitar',
+  'share.linkLabel': 'Compartir via enlace',
+  'share.generateLink': 'Generar enlace',
+  'share.copyLink': 'Copiar enlace',
+  'share.linkCopied': 'Enlace copiado!',
+  'share.deactivateLink': 'Desactivar enlace',
+  'share.currentShares': 'Personas con acceso',
+  'share.pending': 'Pendiente',
+  'share.accepted': 'Aceptado',
+  'share.remove': 'Eliminar',
+  'share.owner': 'Propietario',
+  'share.userNotFound': 'Usuario no encontrado',
+  'share.alreadyShared': 'Ya compartido con este usuario',
+  'share.cannotShareSelf': 'No se puede compartir consigo mismo',
+  'share.close': 'Cerrar',
+
+  // Invitations
+  'invitation.title': 'Invitaciones',
+  'invitation.from': 'de',
+  'invitation.accept': 'Aceptar',
+  'invitation.decline': 'Rechazar',
+  'invitation.empty': 'No hay invitaciones pendientes',
+  'invitation.acceptLink': 'Aceptar invitacion',
+  'invitation.joinDocument': 'Has sido invitado a "{name}"',
+  'invitation.loginRequired': 'Inicia sesion para aceptar esta invitacion',
+
   // Presence
   'presence.you': '(tu)',
 };

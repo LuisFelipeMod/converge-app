@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '@/stores/auth';
 import { useCollaborationStore } from '@/stores/collaboration';
 import CollabCanvas from '@/components/CollabCanvas.vue';
 import AuthCallback from '@/components/AuthCallback.vue';
+import ShareModal from '@/components/ShareModal.vue';
+import InvitationBadge from '@/components/InvitationBadge.vue';
 
 const { t, locale } = useI18n();
 const authStore = useAuthStore();
@@ -12,17 +14,39 @@ const store = useCollaborationStore();
 
 const documentId = ref<string | null>(null);
 const documentName = ref('');
-const documents = ref<Array<{ id: string; name: string }>>([]);
-const archivedDocuments = ref<Array<{ id: string; name: string }>>([]);
+const documents = ref<Array<{ id: string; name: string; ownerId: string | null; owner?: { name: string; email: string } | null }>>([]);
+const archivedDocuments = ref<Array<{ id: string; name: string; ownerId: string | null }>>([]);
 const loading = ref(false);
 const initializing = ref(true);
 const showArchived = ref(false);
 const confirmingDeleteId = ref<string | null>(null);
 
+// Sharing state
+const sharingDocId = ref<string | null>(null);
+const sharingDocName = ref('');
+const inviteBadgeRef = ref<InstanceType<typeof InvitationBadge> | null>(null);
+
+// Invite link state
+const pendingInviteToken = ref<string | null>(null);
+const inviteLinkInfo = ref<{ document: { id: string; name: string } } | null>(null);
+const inviteLinkLoading = ref(false);
+
 const isAuthCallback = computed(() =>
   window.location.pathname === '/auth/callback' ||
   window.location.search.includes('token='),
 );
+
+const myDocuments = computed(() =>
+  documents.value.filter((d) => d.ownerId === authStore.user?.userId || d.ownerId === null),
+);
+
+const sharedDocuments = computed(() =>
+  documents.value.filter((d) => d.ownerId !== null && d.ownerId !== authStore.user?.userId),
+);
+
+function isOwner(doc: { ownerId: string | null }) {
+  return doc.ownerId === authStore.user?.userId || doc.ownerId === null;
+}
 
 const locales = [
   { code: 'pt', label: 'PT' },
@@ -80,6 +104,7 @@ function openDocument(id: string) {
 function goBack() {
   documentId.value = null;
   fetchDocuments();
+  inviteBadgeRef.value?.fetchInvitations();
 }
 
 async function deleteDocument(id: string) {
@@ -145,18 +170,95 @@ function toggleArchived() {
   }
 }
 
+function openShareModal(doc: { id: string; name: string }) {
+  sharingDocId.value = doc.id;
+  sharingDocName.value = doc.name;
+}
+
+// Handle invite link token
+async function processInviteToken(token: string) {
+  if (!store.token) {
+    // Save for after login
+    localStorage.setItem('pending_invite_token', token);
+    return;
+  }
+  inviteLinkLoading.value = true;
+  try {
+    const res = await fetch(`/api/share-links/${token}`, {
+      headers: { Authorization: `Bearer ${store.token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      pendingInviteToken.value = token;
+      inviteLinkInfo.value = data;
+    }
+  } catch { /* ignore */ }
+  inviteLinkLoading.value = false;
+  // Clean URL
+  window.history.replaceState({}, '', window.location.pathname);
+}
+
+async function acceptInviteLink() {
+  if (!pendingInviteToken.value) return;
+  inviteLinkLoading.value = true;
+  try {
+    const res = await fetch(`/api/share-links/${pendingInviteToken.value}/accept`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${store.token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      pendingInviteToken.value = null;
+      inviteLinkInfo.value = null;
+      openDocument(data.documentId);
+    }
+  } catch { /* ignore */ }
+  inviteLinkLoading.value = false;
+}
+
+function dismissInviteLink() {
+  pendingInviteToken.value = null;
+  inviteLinkInfo.value = null;
+}
+
 function onAuthenticated() {
   if (authStore.isAuthenticated) {
     fetchDocuments();
+    checkPendingInviteToken();
   }
   initializing.value = false;
 }
 
+function checkPendingInviteToken() {
+  // Check URL for invite param
+  const params = new URLSearchParams(window.location.search);
+  const inviteToken = params.get('invite');
+  if (inviteToken) {
+    processInviteToken(inviteToken);
+    return;
+  }
+  // Check localStorage for saved invite token (from pre-login)
+  const saved = localStorage.getItem('pending_invite_token');
+  if (saved) {
+    localStorage.removeItem('pending_invite_token');
+    processInviteToken(saved);
+  }
+}
+
 onMounted(async () => {
   if (!isAuthCallback.value) {
+    // Check if there's an invite token before auth init (to save it for after login)
+    const params = new URLSearchParams(window.location.search);
+    const inviteToken = params.get('invite');
+    if (inviteToken && !localStorage.getItem('auth_token')) {
+      localStorage.setItem('pending_invite_token', inviteToken);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     await authStore.init();
     if (authStore.isAuthenticated) {
       fetchDocuments();
+      checkPendingInviteToken();
     }
     initializing.value = false;
   }
@@ -235,6 +337,33 @@ onMounted(async () => {
     </div>
   </div>
 
+  <!-- Invite link acceptance overlay -->
+  <div v-else-if="inviteLinkInfo && !documentId" class="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+    <div class="max-w-sm w-full p-6 text-center">
+      <div class="bg-gray-800 border border-gray-700 rounded-xl p-8">
+        <svg class="w-12 h-12 mx-auto mb-4 text-blue-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"/>
+        </svg>
+        <p class="text-lg font-semibold mb-2">{{ t('invitation.joinDocument', { name: inviteLinkInfo.document.name }) }}</p>
+        <div class="flex gap-3 mt-6">
+          <button
+            :disabled="inviteLinkLoading"
+            class="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
+            @click="acceptInviteLink"
+          >
+            {{ t('invitation.acceptLink') }}
+          </button>
+          <button
+            class="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2.5 rounded-lg font-medium transition-colors"
+            @click="dismissInviteLink"
+          >
+            {{ t('app.cancel') }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Document browser -->
   <div v-else-if="!documentId" class="min-h-screen bg-gray-900 text-white flex items-center justify-center">
     <!-- Language selector -->
@@ -262,6 +391,11 @@ onMounted(async () => {
           <p class="text-gray-400 text-sm">{{ t('app.collaborativeWhiteboard') }}</p>
         </div>
         <div class="flex items-center gap-3">
+          <InvitationBadge
+            v-if="!authStore.isGuest"
+            ref="inviteBadgeRef"
+            @open-document="openDocument"
+          />
           <div class="flex items-center gap-2">
             <img
               v-if="store.userAvatar"
@@ -304,11 +438,12 @@ onMounted(async () => {
         </button>
       </div>
 
-      <div v-if="documents.length > 0" class="space-y-2">
-        <h2 class="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3 animate-fade-in">{{ t('app.documents') }}</h2>
+      <!-- My Documents -->
+      <div v-if="myDocuments.length > 0" class="space-y-2">
+        <h2 class="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3 animate-fade-in">{{ t('app.myDocuments') }}</h2>
         <TransitionGroup name="list" tag="div" class="space-y-2">
         <div
-          v-for="(doc, index) in documents"
+          v-for="(doc, index) in myDocuments"
           :key="doc.id"
           class="flex items-center bg-gray-800/80 border border-gray-700/60 rounded-lg transition-all duration-200 hover:border-gray-500 hover:translate-x-1 hover:bg-gray-800"
           :style="{ animationDelay: `${index * 50}ms` }"
@@ -330,6 +465,15 @@ onMounted(async () => {
               >{{ t('app.cancel') }}</button>
             </template>
             <template v-else>
+              <!-- Share button (non-guests only) -->
+              <button
+                v-if="!authStore.isGuest"
+                class="text-gray-500 hover:text-blue-400 p-1.5 rounded transition-colors"
+                :title="t('app.share')"
+                @click.stop="openShareModal(doc)"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z"/></svg>
+              </button>
               <button
                 v-if="!authStore.isGuest"
                 class="text-gray-500 hover:text-yellow-400 p-1.5 rounded transition-colors"
@@ -347,6 +491,27 @@ onMounted(async () => {
               </button>
             </template>
           </div>
+        </div>
+        </TransitionGroup>
+      </div>
+
+      <!-- Shared with me -->
+      <div v-if="sharedDocuments.length > 0" class="mt-6 space-y-2">
+        <h2 class="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3 animate-fade-in">{{ t('app.sharedWithMe') }}</h2>
+        <TransitionGroup name="list" tag="div" class="space-y-2">
+        <div
+          v-for="(doc, index) in sharedDocuments"
+          :key="doc.id"
+          class="flex items-center bg-gray-800/80 border border-gray-700/60 rounded-lg transition-all duration-200 hover:border-gray-500 hover:translate-x-1 hover:bg-gray-800"
+          :style="{ animationDelay: `${index * 50}ms` }"
+        >
+          <button
+            class="flex-1 text-left px-4 py-3 hover:text-blue-400 transition-colors duration-200 truncate"
+            @click="openDocument(doc.id)"
+          >
+            <span>{{ doc.name }}</span>
+            <span v-if="doc.owner" class="text-xs text-gray-500 ml-2">{{ t('app.ownerLabel', { name: doc.owner.name }) }}</span>
+          </button>
         </div>
         </TransitionGroup>
       </div>
@@ -380,7 +545,7 @@ onMounted(async () => {
                   @click.stop="confirmingDeleteId = null"
                 >{{ t('app.cancel') }}</button>
               </template>
-              <template v-else>
+              <template v-else-if="isOwner(doc)">
                 <button
                   class="text-gray-500 hover:text-green-400 p-1.5 rounded transition-colors"
                   :title="t('app.unarchive')"
@@ -402,6 +567,14 @@ onMounted(async () => {
         </Transition>
       </div>
     </div>
+
+    <!-- Share Modal -->
+    <ShareModal
+      v-if="sharingDocId"
+      :document-id="sharingDocId"
+      :document-name="sharingDocName"
+      @close="sharingDocId = null"
+    />
   </div>
 
   <!-- Canvas -->

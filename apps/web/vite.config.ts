@@ -20,6 +20,10 @@ export default defineConfig({
       '/auth': {
         target: 'http://localhost:3000',
         changeOrigin: true,
+        bypass(req) {
+          // Let /auth/callback be handled by the SPA (frontend route)
+          if (req.url?.startsWith('/auth/callback')) return req.url;
+        },
       },
       '/socket.io': {
         target: 'http://localhost:3000',

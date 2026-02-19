@@ -6,6 +6,7 @@ import { CollaborationModule } from './collaboration/collaboration.module';
 import { DocumentModule } from './document/document.module';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
+import { SharingModule } from './sharing/sharing.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { UserModule } from './user/user.module';
     AuthModule.forRoot(),
     CollaborationModule,
     DocumentModule,
+    SharingModule,
   ],
 })
 export class AppModule {}
