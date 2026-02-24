@@ -31,7 +31,7 @@ const pendingInviteToken = ref<string | null>(null);
 const inviteLinkInfo = ref<{ document: { id: string; name: string } } | null>(null);
 const inviteLinkLoading = ref(false);
 
-const isAuthCallback = computed(() =>
+const isAuthCallback = ref(
   window.location.pathname === '/auth/callback' ||
   window.location.search.includes('token='),
 );
@@ -222,6 +222,7 @@ function dismissInviteLink() {
 }
 
 function onAuthenticated() {
+  isAuthCallback.value = false;
   if (authStore.isAuthenticated) {
     fetchDocuments();
     checkPendingInviteToken();
