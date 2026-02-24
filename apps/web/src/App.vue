@@ -63,7 +63,7 @@ function setLocale(code: string) {
 async function fetchDocuments() {
   if (!store.token) return;
   try {
-    const res = await fetch(`${API_BASE}/api/documents`, {
+    const res = await fetch(`${API_BASE}/documents`, {
       headers: { Authorization: `Bearer ${store.token}` },
     });
     if (res.ok) {
@@ -78,7 +78,7 @@ async function createDocument() {
   const name = documentName.value.trim() || 'Untitled';
   try {
     loading.value = true;
-    const res = await fetch(`${API_BASE}/api/documents`, {
+    const res = await fetch(`${API_BASE}/documents`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -110,7 +110,7 @@ function goBack() {
 
 async function deleteDocument(id: string) {
   try {
-    await fetch(`${API_BASE}/api/documents/${id}`, {
+    await fetch(`${API_BASE}/documents/${id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${store.token}` },
     });
@@ -124,7 +124,7 @@ async function deleteDocument(id: string) {
 
 async function archiveDocument(id: string) {
   try {
-    await fetch(`${API_BASE}/api/documents/${id}/archive`, {
+    await fetch(`${API_BASE}/documents/${id}/archive`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${store.token}` },
     });
@@ -138,7 +138,7 @@ async function archiveDocument(id: string) {
 
 async function unarchiveDocument(id: string) {
   try {
-    await fetch(`${API_BASE}/api/documents/${id}/unarchive`, {
+    await fetch(`${API_BASE}/documents/${id}/unarchive`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${store.token}` },
     });
@@ -153,7 +153,7 @@ async function unarchiveDocument(id: string) {
 async function fetchArchivedDocuments() {
   if (!store.token) return;
   try {
-    const res = await fetch(`${API_BASE}/api/documents/archived`, {
+    const res = await fetch(`${API_BASE}/documents/archived`, {
       headers: { Authorization: `Bearer ${store.token}` },
     });
     if (res.ok) {
@@ -185,7 +185,7 @@ async function processInviteToken(token: string) {
   }
   inviteLinkLoading.value = true;
   try {
-    const res = await fetch(`${API_BASE}/api/share-links/${token}`, {
+    const res = await fetch(`${API_BASE}/share-links/${token}`, {
       headers: { Authorization: `Bearer ${store.token}` },
     });
     if (res.ok) {
@@ -203,7 +203,7 @@ async function acceptInviteLink() {
   if (!pendingInviteToken.value) return;
   inviteLinkLoading.value = true;
   try {
-    const res = await fetch(`${API_BASE}/api/share-links/${pendingInviteToken.value}/accept`, {
+    const res = await fetch(`${API_BASE}/share-links/${pendingInviteToken.value}/accept`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${store.token}` },
     });

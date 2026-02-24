@@ -21,7 +21,7 @@ const showDropdown = ref(false);
 
 async function fetchInvitations() {
   try {
-    const res = await fetch(`${API_BASE}/api/invitations`, {
+    const res = await fetch(`${API_BASE}/invitations`, {
       headers: { Authorization: `Bearer ${store.token}` },
     });
     if (res.ok) invitations.value = await res.json();
@@ -30,7 +30,7 @@ async function fetchInvitations() {
 
 async function acceptInvite(invite: typeof invitations.value[0]) {
   try {
-    const res = await fetch(`${API_BASE}/api/invitations/${invite.id}/accept`, {
+    const res = await fetch(`${API_BASE}/invitations/${invite.id}/accept`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${store.token}` },
     });
@@ -44,7 +44,7 @@ async function acceptInvite(invite: typeof invitations.value[0]) {
 
 async function declineInvite(id: string) {
   try {
-    const res = await fetch(`${API_BASE}/api/invitations/${id}/decline`, {
+    const res = await fetch(`${API_BASE}/invitations/${id}/decline`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${store.token}` },
     });
