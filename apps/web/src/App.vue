@@ -7,6 +7,7 @@ import CollabCanvas from '@/components/CollabCanvas.vue';
 import AuthCallback from '@/components/AuthCallback.vue';
 import ShareModal from '@/components/ShareModal.vue';
 import InvitationBadge from '@/components/InvitationBadge.vue';
+import { API_BASE } from '@/config';
 
 const { t, locale } = useI18n();
 const authStore = useAuthStore();
@@ -62,7 +63,7 @@ function setLocale(code: string) {
 async function fetchDocuments() {
   if (!store.token) return;
   try {
-    const res = await fetch('/api/documents', {
+    const res = await fetch(`${API_BASE}/api/documents`, {
       headers: { Authorization: `Bearer ${store.token}` },
     });
     if (res.ok) {
@@ -77,7 +78,7 @@ async function createDocument() {
   const name = documentName.value.trim() || 'Untitled';
   try {
     loading.value = true;
-    const res = await fetch('/api/documents', {
+    const res = await fetch(`${API_BASE}/api/documents`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -109,7 +110,7 @@ function goBack() {
 
 async function deleteDocument(id: string) {
   try {
-    await fetch(`/api/documents/${id}`, {
+    await fetch(`${API_BASE}/api/documents/${id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${store.token}` },
     });
@@ -123,7 +124,7 @@ async function deleteDocument(id: string) {
 
 async function archiveDocument(id: string) {
   try {
-    await fetch(`/api/documents/${id}/archive`, {
+    await fetch(`${API_BASE}/api/documents/${id}/archive`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${store.token}` },
     });
@@ -137,7 +138,7 @@ async function archiveDocument(id: string) {
 
 async function unarchiveDocument(id: string) {
   try {
-    await fetch(`/api/documents/${id}/unarchive`, {
+    await fetch(`${API_BASE}/api/documents/${id}/unarchive`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${store.token}` },
     });
@@ -152,7 +153,7 @@ async function unarchiveDocument(id: string) {
 async function fetchArchivedDocuments() {
   if (!store.token) return;
   try {
-    const res = await fetch('/api/documents/archived', {
+    const res = await fetch(`${API_BASE}/api/documents/archived`, {
       headers: { Authorization: `Bearer ${store.token}` },
     });
     if (res.ok) {
@@ -184,7 +185,7 @@ async function processInviteToken(token: string) {
   }
   inviteLinkLoading.value = true;
   try {
-    const res = await fetch(`/api/share-links/${token}`, {
+    const res = await fetch(`${API_BASE}/api/share-links/${token}`, {
       headers: { Authorization: `Bearer ${store.token}` },
     });
     if (res.ok) {
@@ -202,7 +203,7 @@ async function acceptInviteLink() {
   if (!pendingInviteToken.value) return;
   inviteLinkLoading.value = true;
   try {
-    const res = await fetch(`/api/share-links/${pendingInviteToken.value}/accept`, {
+    const res = await fetch(`${API_BASE}/api/share-links/${pendingInviteToken.value}/accept`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${store.token}` },
     });

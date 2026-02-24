@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useCollaborationStore } from '@/stores/collaboration';
+import { API_BASE } from '@/config';
 
 const props = defineProps<{
   documentId: string;
@@ -25,7 +26,7 @@ const origin = window.location.origin;
 
 async function fetchShares() {
   try {
-    const res = await fetch(`/api/documents/${props.documentId}/shares`, {
+    const res = await fetch(`${API_BASE}/api/documents/${props.documentId}/shares`, {
       headers: { Authorization: `Bearer ${store.token}` },
     });
     if (res.ok) shares.value = await res.json();
@@ -34,7 +35,7 @@ async function fetchShares() {
 
 async function fetchShareLink() {
   try {
-    const res = await fetch(`/api/documents/${props.documentId}/share-link`, {
+    const res = await fetch(`${API_BASE}/api/documents/${props.documentId}/share-link`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -50,7 +51,7 @@ async function inviteByEmail() {
   inviteError.value = '';
   inviteLoading.value = true;
   try {
-    const res = await fetch(`/api/documents/${props.documentId}/shares`, {
+    const res = await fetch(`${API_BASE}/api/documents/${props.documentId}/shares`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -75,7 +76,7 @@ async function inviteByEmail() {
 
 async function removeShare(shareId: string) {
   try {
-    await fetch(`/api/shares/${shareId}`, {
+    await fetch(`${API_BASE}/api/shares/${shareId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${store.token}` },
     });
@@ -90,7 +91,7 @@ async function generateLink() {
 async function deactivateLink() {
   if (!shareLink.value) return;
   try {
-    await fetch(`/api/share-links/${shareLink.value.id}`, {
+    await fetch(`${API_BASE}/api/share-links/${shareLink.value.id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${store.token}` },
     });

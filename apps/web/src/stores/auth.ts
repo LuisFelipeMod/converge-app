@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import { API_BASE } from '@/config';
 
 export interface AuthUser {
   userId: string;
@@ -17,7 +18,7 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false);
 
   function login(provider: 'google' | 'github') {
-    window.location.href = `/auth/${provider}`;
+    window.location.href = `${API_BASE}/auth/${provider}`;
   }
 
   async function handleCallback(newToken: string) {
@@ -30,7 +31,7 @@ export const useAuthStore = defineStore('auth', () => {
     const guestId = Math.random().toString(36).slice(2, 10);
     const guestName = `Guest-${guestId.slice(0, 4)}`;
     try {
-      const res = await fetch('/api/auth/token', {
+      const res = await fetch(`${API_BASE}/api/auth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: guestId, name: guestName }),
@@ -55,7 +56,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function fetchProfile() {
     if (!token.value) return;
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await fetch(`${API_BASE}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token.value}` },
       });
       if (res.ok) {

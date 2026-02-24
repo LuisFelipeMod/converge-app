@@ -2,6 +2,7 @@ import { ref, onUnmounted, shallowRef } from 'vue';
 import * as Y from 'yjs';
 import { io, Socket } from 'socket.io-client';
 import { WsEvent } from '@realtime-collab/shared';
+import { API_BASE } from '@/config';
 import type { Shape, UserPresence } from '@realtime-collab/shared';
 
 export function useYjs(documentId: string, user: { userId: string; name: string; avatar?: string; token: string }) {
@@ -27,7 +28,7 @@ export function useYjs(documentId: string, user: { userId: string; name: string;
   }
 
   function connect() {
-    const s = io('/collaboration', {
+    const s = io(`${API_BASE}/collaboration`, {
       auth: { token: user.token },
       transports: ['websocket'],
     });
